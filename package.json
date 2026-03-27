@@ -21,7 +21,7 @@
     "security",
     "prodcycle"
   ],
-  "author": "ProdCycle <support@prodcycle.com> (https://prodcycle.com)",
+  "author": "ProdCycle <support@prodcycle.com> (https://app.prodcycle.com)",
   "repository": {
     "type": "git",
     "url": "https://github.com/prodcycle/compliance-verification.git"

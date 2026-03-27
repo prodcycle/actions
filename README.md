@@ -1,8 +1,8 @@
 # ProdCycle Compliance Verification Action
 
-A GitHub Action that scans pull request changes for compliance violations against SOC 2, HIPAA, ISO 27001, NIST CSF, PCI DSS, GDPR, and CCPA frameworks via the [ProdCycle](https://prodcycle.com) API.
+A GitHub Action that scans pull request changes for compliance violations against SOC 2, HIPAA, ISO 27001, NIST CSF, PCI DSS, GDPR, and CCPA frameworks via the [ProdCycle](https://app.prodcycle.com) API.
 
-> **Requires a ProdCycle account.** This action calls the ProdCycle compliance API, which requires a valid CVK API key (`cvk_...`). [Sign up at prodcycle.com](https://prodcycle.com) to get started.
+> **Requires a ProdCycle account.** This action calls the ProdCycle compliance API, which requires a valid CVK API key (`cvk_...`). [Sign up at app.prodcycle.com](https://app.prodcycle.com) to get started.
 
 ## How it works
 
@@ -39,7 +39,7 @@ jobs:
 
 ## Prerequisites
 
-- A **ProdCycle account** — [sign up at prodcycle.com](https://prodcycle.com)
+- A **ProdCycle account** — [sign up at app.prodcycle.com](https://app.prodcycle.com)
 - A **CVK API key** — generated from your ProdCycle workspace settings
 - Compliance verification enabled on your workspace
 
