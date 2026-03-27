@@ -21,6 +21,15 @@
     "security",
     "prodcycle"
   ],
+  "author": "ProdCycle <support@prodcycle.com> (https://prodcycle.com)",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/prodcycle/compliance-verification-action.git"
+  },
+  "homepage": "https://github.com/prodcycle/compliance-verification-action#readme",
+  "bugs": {
+    "url": "https://github.com/prodcycle/compliance-verification-action/issues"
+  },
   "license": "MIT",
   "dependencies": {
     "@actions/core": "^1.11.1",
@@ -29,11 +38,13 @@
     "minimatch": "^10.0.1"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@types/node": "^22.15.0",
     "@vercel/ncc": "^0.38.3",
     "eslint": "^9.20.0",
     "prettier": "^3.5.0",
     "typescript": "^5.8.0",
+    "typescript-eslint": "^8.57.2",
     "vitest": "^3.0.0"
   }
 }
