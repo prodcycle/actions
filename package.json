@@ -24,11 +24,11 @@
   "author": "ProdCycle <support@prodcycle.com> (https://prodcycle.com)",
   "repository": {
     "type": "git",
-    "url": "https://github.com/prodcycle/compliance-verification-action.git"
+    "url": "https://github.com/prodcycle/compliance-verification.git"
   },
-  "homepage": "https://github.com/prodcycle/compliance-verification-action#readme",
+  "homepage": "https://github.com/prodcycle/compliance-verification#readme",
   "bugs": {
-    "url": "https://github.com/prodcycle/compliance-verification-action/issues"
+    "url": "https://github.com/prodcycle/compliance-verification/issues"
   },
   "license": "MIT",
   "dependencies": {
