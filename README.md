@@ -9,7 +9,7 @@ A GitHub Action that scans pull request changes for compliance violations agains
 On every pull request:
 
 1. Collects changed files from the PR diff (full file content, not just the diff)
-2. Sends them to the ProdCycle compliance verification API
+2. Sends them to the ProdCycle compliance check API
 3. Creates inline annotations on the PR for each finding
 4. Posts a summary comment with severity and framework breakdown
 5. Fails the check if findings match the configured severity threshold
@@ -41,13 +41,13 @@ jobs:
 
 - A **ProdCycle account** — [sign up at prodcycle.com](https://prodcycle.com)
 - A **CVK API key** — generated from your ProdCycle workspace settings
-- Compliance verification enabled on your workspace
+- Compliance check enabled on your workspace
 
 ## Setup
 
 ### 1. Generate an API key
 
-In ProdCycle, go to **Settings > API** and create a compliance verification API key. The key starts with `cvk_`.
+In ProdCycle, go to **Settings > API** and create a compliance check API key. The key starts with `cvk_`.
 
 ### 2. Add the key to GitHub secrets
 
