@@ -1,8 +1,8 @@
 # ProdCycle Compliance Code Scanner
 
-A GitHub Action that scans pull request changes for compliance violations against SOC 2, HIPAA, ISO 27001, NIST CSF, PCI DSS, GDPR, and CCPA frameworks via the [ProdCycle](https://prodcycle.com) API.
+A GitHub Action that scans pull request changes for compliance violations against SOC 2 and HIPAA frameworks via the [ProdCycle](https://prodcycle.com) API.
 
-> **Requires a ProdCycle account.** This action calls the ProdCycle compliance API, which requires a valid CVK API key (`cvk_...`). [Sign up at prodcycle.com](https://app.prodcycle.com) to get started.
+> **Requires a ProdCycle account.** This action calls the ProdCycle compliance API, which requires a valid API key (`pc_...`). [Sign up at prodcycle.com](https://app.prodcycle.com) to get started.
 
 ## How it works
 
@@ -34,27 +34,27 @@ jobs:
           fetch-depth: 0
       - uses: prodcycle/compliance-code-scanner@v1
         with:
-          api-key: ${{ secrets.PRODCYCLE_CVK }}
+          api-key: ${{ secrets.PRODCYCLE_API_KEY }}
 ```
 
 ## Prerequisites
 
-- A **ProdCycle account** — [sign up at prodcycle.com](https://prodcycle.com)
-- A **CVK API key** — generated from your ProdCycle workspace settings
+- A **ProdCycle account** ([sign up at prodcycle.com](https://prodcycle.com))
+- A **ProdCycle API key** generated from your workspace settings
 - Compliance check enabled on your workspace
 
 ## Setup
 
 ### 1. Generate an API key
 
-In ProdCycle, go to **Settings > API** and create a compliance check API key. The key starts with `cvk_`.
+In ProdCycle, go to **Settings > API** and create a compliance check API key. The key starts with `pc_`.
 
 ### 2. Add the key to GitHub secrets
 
 In your repository, go to **Settings > Secrets and variables > Actions** and add a new secret:
 
-- **Name:** `PRODCYCLE_CVK`
-- **Value:** Your `cvk_...` key
+- **Name:** `PRODCYCLE_API_KEY`
+- **Value:** Your `pc_...` key
 
 ### 3. Add the workflow
 
@@ -64,9 +64,9 @@ Create `.github/workflows/compliance.yml` in your repository with the configurat
 
 | Input                | Required | Default                     | Description                                                              |
 | -------------------- | -------- | --------------------------- | ------------------------------------------------------------------------ |
-| `api-key`            | Yes      | —                           | ProdCycle compliance API key (`cvk_...`)                                 |
+| `api-key`            | Yes      |                             | ProdCycle compliance API key (`pc_...`)                                  |
 | `api-url`            | No       | `https://api.prodcycle.com` | ProdCycle API base URL                                                   |
-| `frameworks`         | No       | Workspace setting           | Comma-separated framework IDs (`soc2,hipaa,iso27001,nist,pci,gdpr,ccpa`) |
+| `frameworks`         | No       | Workspace setting           | Comma-separated framework IDs (`soc2,hipaa`)                             |
 | `fail-on`            | No       | `critical,high`             | Comma-separated severities that fail the check                           |
 | `severity-threshold` | No       | `low`                       | Minimum severity to include in results                                   |
 | `include`            | No       | All changed files           | Comma-separated glob patterns to include (`**/*.tf,**/*.yaml`)           |
@@ -90,7 +90,7 @@ Create `.github/workflows/compliance.yml` in your repository with the configurat
 ```yaml
 - uses: prodcycle/compliance-code-scanner@v1
   with:
-    api-key: ${{ secrets.PRODCYCLE_CVK }}
+    api-key: ${{ secrets.PRODCYCLE_API_KEY }}
     frameworks: soc2,hipaa
 ```
 
@@ -99,7 +99,7 @@ Create `.github/workflows/compliance.yml` in your repository with the configurat
 ```yaml
 - uses: prodcycle/compliance-code-scanner@v1
   with:
-    api-key: ${{ secrets.PRODCYCLE_CVK }}
+    api-key: ${{ secrets.PRODCYCLE_API_KEY }}
     fail-on: critical
 ```
 
@@ -108,7 +108,7 @@ Create `.github/workflows/compliance.yml` in your repository with the configurat
 ```yaml
 - uses: prodcycle/compliance-code-scanner@v1
   with:
-    api-key: ${{ secrets.PRODCYCLE_CVK }}
+    api-key: ${{ secrets.PRODCYCLE_API_KEY }}
     include: "**/*.tf,**/*.yaml,**/*.yml,**/Dockerfile"
     exclude: "test/**,docs/**"
 ```
@@ -119,7 +119,7 @@ Create `.github/workflows/compliance.yml` in your repository with the configurat
 - uses: prodcycle/compliance-code-scanner@v1
   id: compliance
   with:
-    api-key: ${{ secrets.PRODCYCLE_CVK }}
+    api-key: ${{ secrets.PRODCYCLE_API_KEY }}
   continue-on-error: true
 
 - run: |
@@ -133,21 +133,16 @@ Create `.github/workflows/compliance.yml` in your repository with the configurat
 ```yaml
 - uses: prodcycle/compliance-code-scanner@v1
   with:
-    api-key: ${{ secrets.PRODCYCLE_CVK }}
+    api-key: ${{ secrets.PRODCYCLE_API_KEY }}
     api-url: https://api.yourcompany.com
 ```
 
 ## Supported frameworks
 
-| ID         | Framework | Version       |
-| ---------- | --------- | ------------- |
-| `soc2`     | SOC 2     | 2017          |
-| `hipaa`    | HIPAA     | Security Rule |
-| `iso27001` | ISO 27001 | 2022          |
-| `nist`     | NIST CSF  | 2.0           |
-| `pci`      | PCI DSS   | 4.0           |
-| `gdpr`     | GDPR      | 2016/679      |
-| `ccpa`     | CCPA      | 2018          |
+| ID     | Framework |
+| ------ | --------- |
+| `soc2` | SOC 2     |
+| `hipaa`| HIPAA     |
 
 If no `frameworks` input is specified, the action uses the frameworks configured on your ProdCycle workspace.
 
@@ -155,8 +150,8 @@ If no `frameworks` input is specified, the action uses the frameworks configured
 
 The action requires the following GitHub token permissions:
 
-- `contents: read` — to checkout and read changed files
-- `pull-requests: write` — to post annotations and summary comments
+- `contents: read` to checkout and read changed files
+- `pull-requests: write` to post annotations and summary comments
 
 ## Development
 
@@ -179,4 +174,4 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for more details.
 
 ## License
 
-MIT — see [LICENSE](LICENSE)
+MIT. See [LICENSE](LICENSE) for details.

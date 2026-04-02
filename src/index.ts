@@ -1,5 +1,5 @@
 // =============================================================================
-// ProdCycle Compliance Code Scanner — Entry Point
+// ProdCycle Compliance Code Scanner: Entry Point
 // =============================================================================
 //
 // Flow:
@@ -23,9 +23,9 @@ import type { ActionInputs } from "./types";
 
 function parseInputs(): ActionInputs {
   const apiKey = core.getInput("api-key", { required: true });
-  if (!apiKey.startsWith("cvk_")) {
+  if (!apiKey.startsWith("pc_")) {
     throw new Error(
-      'Invalid API key format. Expected a key starting with "cvk_".',
+      'Invalid API key format. Expected a key starting with "pc_".',
     );
   }
 
@@ -61,7 +61,7 @@ async function run(): Promise<void> {
   const context = github.context;
 
   if (!context.payload.pull_request) {
-    core.info("Not a pull request event — scanning all files in workspace");
+    core.info("Not a pull request event. Scanning all files in workspace.");
   }
 
   const baseSha =
@@ -108,7 +108,7 @@ async function run(): Promise<void> {
   });
 
   core.info(
-    `Scan complete: ${result.passed ? "PASSED" : "FAILED"} — ${result.findingsCount} finding(s)`,
+    `Scan complete: ${result.passed ? "PASSED" : "FAILED"} with ${result.findingsCount} finding(s)`,
   );
 
   // ── 4. Set outputs ──

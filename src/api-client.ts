@@ -1,5 +1,5 @@
 // =============================================================================
-// ProdCycle Compliance Code Scanner — API Client
+// ProdCycle Compliance Code Scanner: API Client
 // =============================================================================
 
 import * as core from "@actions/core";
@@ -53,7 +53,7 @@ export class ComplianceApiClient {
     }
 
     const url = `${this.apiUrl.replace(/\/+$/, "")}/v1/compliance/validate`;
-    core.debug(`POST ${url} — ${files.length} file(s)`);
+    core.debug(`POST ${url} (${files.length} file(s))`);
 
     let lastError: Error | undefined;
 

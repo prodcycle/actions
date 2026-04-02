@@ -29928,7 +29928,7 @@ function wrappy (fn, cb) {
 "use strict";
 
 // =============================================================================
-// ProdCycle Compliance Code Scanner — PR Annotations & Comments
+// ProdCycle Compliance Code Scanner: PR Annotations & Comments
 // =============================================================================
 var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
     if (k2 === undefined) k2 = k;
@@ -29993,7 +29993,7 @@ function createAnnotations(findings) {
             finding.message,
             "",
             `Framework: ${finding.framework} (${finding.controlId})`,
-            `Resource: ${finding.resourceType} — ${finding.resourceName}`,
+            `Resource: ${finding.resourceType} (${finding.resourceName})`,
             "",
             `Remediation: ${finding.remediation}`,
         ].join("\n");
@@ -30015,12 +30015,12 @@ function createAnnotations(findings) {
 async function postSummaryComment(findings, summary, scanId, passed, apiUrl) {
     const token = core.getInput("github-token") || process.env.GITHUB_TOKEN;
     if (!token) {
-        core.warning("No GitHub token available — skipping PR comment. Set the 'github-token' input or ensure GITHUB_TOKEN is in the environment.");
+        core.warning("No GitHub token available. Skipping PR comment. Set the 'github-token' input or ensure GITHUB_TOKEN is in the environment.");
         return;
     }
     const context = github.context;
     if (!context.payload.pull_request) {
-        core.debug("Not a pull request event — skipping PR comment");
+        core.debug("Not a pull request event. Skipping PR comment.");
         return;
     }
     const octokit = github.getOctokit(token);
@@ -30057,13 +30057,11 @@ async function postSummaryComment(findings, summary, scanId, passed, apiUrl) {
     }
 }
 function buildCommentBody(findings, summary, scanId, passed, apiUrl) {
-    // No controls evaluated — nothing relevant in the diff
     if (summary.total === 0) {
         const lines = [
-            "### ⏭️ Compliance Scan — No Relevant Changes",
+            "### ✅ Compliance Check Passed",
             "",
-            "No infrastructure or policy-relevant code was found in this PR's changed files.",
-            "Controls are evaluated when changes include Terraform, Kubernetes, Dockerfiles, CI configs, IAM policies, environment files, or application source code.",
+            "No compliance findings were detected in this PR's changed files.",
             "",
             `Scan ID: \`${scanId}\``,
         ];
@@ -30105,7 +30103,7 @@ function buildCommentBody(findings, summary, scanId, passed, apiUrl) {
         const shown = findings.slice(0, 10);
         for (const f of shown) {
             const icon = SEVERITY_ICONS[f.severity] || "";
-            lines.push(`- ${icon} **${f.ruleId}** in \`${f.resourcePath}\` — ${f.message}`);
+            lines.push(`- ${icon} **${f.ruleId}** in \`${f.resourcePath}\`: ${f.message}`);
             lines.push(`  - Remediation: ${f.remediation}`);
         }
         if (findings.length > 10) {
@@ -30128,9 +30126,9 @@ function writeJobSummary(summary, scanId, passed, fileCount) {
     let md;
     if (summary.total === 0) {
         md = [
-            `## Compliance Code Scanner — ⏭️ No Relevant Changes`,
+            `## Compliance Code Scanner: ✅ Passed`,
             "",
-            `${fileCount} file(s) scanned. No infrastructure or policy-relevant code found in this PR.`,
+            `${fileCount} file(s) scanned. No compliance findings detected.`,
             "",
             `Scan ID: \`${scanId}\``,
         ].join("\n");
@@ -30138,7 +30136,7 @@ function writeJobSummary(summary, scanId, passed, fileCount) {
     else {
         const status = passed ? "✅ Passed" : "❌ Failed";
         md = [
-            `## Compliance Code Scanner — ${status}`,
+            `## Compliance Code Scanner: ${status}`,
             "",
             `| Files scanned | Findings | Passed | Failed |`,
             `|:---:|:---:|:---:|:---:|`,
@@ -30159,7 +30157,7 @@ function writeJobSummary(summary, scanId, passed, fileCount) {
 "use strict";
 
 // =============================================================================
-// ProdCycle Compliance Code Scanner — API Client
+// ProdCycle Compliance Code Scanner: API Client
 // =============================================================================
 var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
     if (k2 === undefined) k2 = k;
@@ -30229,7 +30227,7 @@ class ComplianceApiClient {
             };
         }
         const url = `${this.apiUrl.replace(/\/+$/, "")}/v1/compliance/validate`;
-        core.debug(`POST ${url} — ${files.length} file(s)`);
+        core.debug(`POST ${url} (${files.length} file(s))`);
         let lastError;
         for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
             if (attempt > 0) {
@@ -30300,7 +30298,7 @@ function sleep(ms) {
 "use strict";
 
 // =============================================================================
-// ProdCycle Compliance Code Scanner — Diff Collection
+// ProdCycle Compliance Code Scanner: Diff Collection
 // =============================================================================
 //
 // Collects changed files from a PR by comparing the base and head refs.
@@ -30425,7 +30423,7 @@ async function collectChangedFiles(baseSha, headSha, repoRoot, include, exclude)
         ignoreReturnCode: true,
     });
     if (hasBase !== 0) {
-        core.debug(`Base SHA ${baseSha} not found locally — fetching...`);
+        core.debug(`Base SHA ${baseSha} not found locally. Fetching...`);
         try {
             await exec.exec("git", ["fetch", "--no-tags", "origin", baseSha], {
                 silent: true,
@@ -30433,7 +30431,7 @@ async function collectChangedFiles(baseSha, headSha, repoRoot, include, exclude)
             });
         }
         catch {
-            core.debug("Could not fetch base SHA — continuing anyway");
+            core.debug("Could not fetch base SHA. Continuing anyway.");
         }
     }
     const changedPaths = await getChangedFilePaths(baseSha, headSha);
@@ -30457,7 +30455,7 @@ async function collectChangedFiles(baseSha, headSha, repoRoot, include, exclude)
 "use strict";
 
 // =============================================================================
-// ProdCycle Compliance Code Scanner — Entry Point
+// ProdCycle Compliance Code Scanner: Entry Point
 // =============================================================================
 //
 // Flow:
@@ -30508,8 +30506,8 @@ const api_client_1 = __nccwpck_require__(3140);
 const annotate_1 = __nccwpck_require__(2912);
 function parseInputs() {
     const apiKey = core.getInput("api-key", { required: true });
-    if (!apiKey.startsWith("cvk_")) {
-        throw new Error('Invalid API key format. Expected a key starting with "cvk_".');
+    if (!apiKey.startsWith("pc_")) {
+        throw new Error('Invalid API key format. Expected a key starting with "pc_".');
     }
     return {
         apiKey,
@@ -30538,7 +30536,7 @@ async function run() {
     // ── 1. Determine PR context ──
     const context = github.context;
     if (!context.payload.pull_request) {
-        core.info("Not a pull request event — scanning all files in workspace");
+        core.info("Not a pull request event. Scanning all files in workspace.");
     }
     const baseSha = context.payload.pull_request?.base?.sha ||
         process.env.GITHUB_BASE_REF ||
@@ -30564,7 +30562,7 @@ async function run() {
         severityThreshold: inputs.severityThreshold,
         failOn: inputs.failOn.length > 0 ? inputs.failOn : undefined,
     });
-    core.info(`Scan complete: ${result.passed ? "PASSED" : "FAILED"} — ${result.findingsCount} finding(s)`);
+    core.info(`Scan complete: ${result.passed ? "PASSED" : "FAILED"} with ${result.findingsCount} finding(s)`);
     // ── 4. Set outputs ──
     core.setOutput("passed", String(result.passed));
     core.setOutput("findings-count", String(result.findingsCount));

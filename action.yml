@@ -1,5 +1,5 @@
 name: "ProdCycle Compliance Code Scanner"
-description: "Scan PR changes for SOC 2, HIPAA, ISO 27001, NIST, PCI DSS, GDPR, and CCPA compliance violations via ProdCycle API"
+description: "Scan PR changes for SOC 2 and HIPAA compliance violations via ProdCycle API"
 
 branding:
   icon: "shield"
@@ -7,14 +7,14 @@ branding:
 
 inputs:
   api-key:
-    description: "ProdCycle compliance API key (cvk_...)"
+    description: "ProdCycle compliance API key (pc_...)"
     required: true
   api-url:
     description: "ProdCycle API base URL"
     required: false
     default: "https://api.prodcycle.com"
   frameworks:
-    description: "Comma-separated framework IDs to evaluate (soc2, hipaa, iso27001, nist, pci, gdpr, ccpa). Defaults to workspace setting."
+    description: "Comma-separated framework IDs to evaluate (soc2, hipaa). Defaults to workspace setting."
     required: false
     default: ""
   fail-on:

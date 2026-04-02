@@ -20,6 +20,6 @@ This policy covers the `prodcycle/compliance-code-scanner` GitHub Action code. F
 
 ## API Key Security
 
-- Never commit your `cvk_` API key to source code
+- Never commit your `pc_` API key to source code
 - Always use [GitHub encrypted secrets](https://docs.github.com/en/actions/security-guides/encrypted-secrets) to store your ProdCycle API key
 - The action automatically masks the API key in workflow logs

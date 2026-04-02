@@ -11,7 +11,7 @@ import { ComplianceApiClient } from "../src/api-client";
 
 describe("ComplianceApiClient", () => {
   const mockApiUrl = "https://api.prodcycle.com";
-  const mockApiKey = "cvk_test1234567890abcdef";
+  const mockApiKey = "pc_test1234567890abcdef";
 
   beforeEach(() => {
     vi.restoreAllMocks();

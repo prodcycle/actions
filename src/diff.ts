@@ -1,5 +1,5 @@
 // =============================================================================
-// ProdCycle Compliance Code Scanner — Diff Collection
+// ProdCycle Compliance Code Scanner: Diff Collection
 // =============================================================================
 //
 // Collects changed files from a PR by comparing the base and head refs.
@@ -133,7 +133,7 @@ export async function collectChangedFiles(
   });
 
   if (hasBase !== 0) {
-    core.debug(`Base SHA ${baseSha} not found locally — fetching...`);
+    core.debug(`Base SHA ${baseSha} not found locally. Fetching...`);
     try {
       await exec.exec(
         "git",
@@ -144,7 +144,7 @@ export async function collectChangedFiles(
         },
       );
     } catch {
-      core.debug("Could not fetch base SHA — continuing anyway");
+      core.debug("Could not fetch base SHA. Continuing anyway.");
     }
   }
 
