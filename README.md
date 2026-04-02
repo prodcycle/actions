@@ -1,6 +1,6 @@
 # ProdCycle Compliance Code Scanner
 
-A GitHub Action that scans pull request changes for compliance violations against SOC 2, HIPAA, ISO 27001, NIST CSF, PCI DSS, GDPR, and CCPA frameworks via the [ProdCycle](https://prodcycle.com) API.
+A GitHub Action that scans pull request changes for compliance violations against SOC 2 and HIPAA frameworks via the [ProdCycle](https://prodcycle.com) API.
 
 > **Requires a ProdCycle account.** This action calls the ProdCycle compliance API, which requires a valid CVK API key (`cvk_...`). [Sign up at prodcycle.com](https://app.prodcycle.com) to get started.
 
@@ -39,8 +39,8 @@ jobs:
 
 ## Prerequisites
 
-- A **ProdCycle account** — [sign up at prodcycle.com](https://prodcycle.com)
-- A **CVK API key** — generated from your ProdCycle workspace settings
+- A **ProdCycle account** - [sign up at prodcycle.com](https://prodcycle.com)
+- A **CVK API key** - generated from your ProdCycle workspace settings
 - Compliance check enabled on your workspace
 
 ## Setup
@@ -64,9 +64,9 @@ Create `.github/workflows/compliance.yml` in your repository with the configurat
 
 | Input                | Required | Default                     | Description                                                              |
 | -------------------- | -------- | --------------------------- | ------------------------------------------------------------------------ |
-| `api-key`            | Yes      | —                           | ProdCycle compliance API key (`cvk_...`)                                 |
+| `api-key`            | Yes      |                             | ProdCycle compliance API key (`cvk_...`)                                 |
 | `api-url`            | No       | `https://api.prodcycle.com` | ProdCycle API base URL                                                   |
-| `frameworks`         | No       | Workspace setting           | Comma-separated framework IDs (`soc2,hipaa,iso27001,nist,pci,gdpr,ccpa`) |
+| `frameworks`         | No       | Workspace setting           | Comma-separated framework IDs (`soc2,hipaa`)                             |
 | `fail-on`            | No       | `critical,high`             | Comma-separated severities that fail the check                           |
 | `severity-threshold` | No       | `low`                       | Minimum severity to include in results                                   |
 | `include`            | No       | All changed files           | Comma-separated glob patterns to include (`**/*.tf,**/*.yaml`)           |
@@ -139,15 +139,10 @@ Create `.github/workflows/compliance.yml` in your repository with the configurat
 
 ## Supported frameworks
 
-| ID         | Framework | Version       |
-| ---------- | --------- | ------------- |
-| `soc2`     | SOC 2     | 2017          |
-| `hipaa`    | HIPAA     | Security Rule |
-| `iso27001` | ISO 27001 | 2022          |
-| `nist`     | NIST CSF  | 2.0           |
-| `pci`      | PCI DSS   | 4.0           |
-| `gdpr`     | GDPR      | 2016/679      |
-| `ccpa`     | CCPA      | 2018          |
+| ID     | Framework |
+| ------ | --------- |
+| `soc2` | SOC 2     |
+| `hipaa`| HIPAA     |
 
 If no `frameworks` input is specified, the action uses the frameworks configured on your ProdCycle workspace.
 
@@ -155,8 +150,8 @@ If no `frameworks` input is specified, the action uses the frameworks configured
 
 The action requires the following GitHub token permissions:
 
-- `contents: read` — to checkout and read changed files
-- `pull-requests: write` — to post annotations and summary comments
+- `contents: read` - to checkout and read changed files
+- `pull-requests: write` - to post annotations and summary comments
 
 ## Development
 
@@ -172,11 +167,11 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for more details.
 
 ## Support
 
-- 📖 [ProdCycle Documentation](https://docs.prodcycle.com)
-- 🐛 [Report an issue](https://github.com/prodcycle/compliance-code-scanner/issues)
-- 🔒 [Security policy](SECURITY.md)
-- 💬 [Contact support](mailto:support@prodcycle.com)
+- [ProdCycle Documentation](https://docs.prodcycle.com)
+- [Report an issue](https://github.com/prodcycle/compliance-code-scanner/issues)
+- [Security policy](SECURITY.md)
+- [Contact support](mailto:support@prodcycle.com)
 
 ## License
 
-MIT — see [LICENSE](LICENSE)
+MIT - see [LICENSE](LICENSE)

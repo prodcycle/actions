@@ -1,5 +1,5 @@
 // =============================================================================
-// ProdCycle Compliance Code Scanner — Entry Point
+// ProdCycle Compliance Code Scanner - Entry Point
 // =============================================================================
 //
 // Flow:
@@ -61,7 +61,7 @@ async function run(): Promise<void> {
   const context = github.context;
 
   if (!context.payload.pull_request) {
-    core.info("Not a pull request event — scanning all files in workspace");
+    core.info("Not a pull request event - scanning all files in workspace");
   }
 
   const baseSha =
@@ -108,7 +108,7 @@ async function run(): Promise<void> {
   });
 
   core.info(
-    `Scan complete: ${result.passed ? "PASSED" : "FAILED"} — ${result.findingsCount} finding(s)`,
+    `Scan complete: ${result.passed ? "PASSED" : "FAILED"} - ${result.findingsCount} finding(s)`,
   );
 
   // ── 4. Set outputs ──

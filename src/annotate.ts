@@ -1,5 +1,5 @@
 // =============================================================================
-// ProdCycle Compliance Code Scanner — PR Annotations & Comments
+// ProdCycle Compliance Code Scanner - PR Annotations & Comments
 // =============================================================================
 
 import * as core from "@actions/core";
@@ -32,7 +32,7 @@ export function createAnnotations(findings: ScanFinding[]): void {
       finding.message,
       "",
       `Framework: ${finding.framework} (${finding.controlId})`,
-      `Resource: ${finding.resourceType} — ${finding.resourceName}`,
+      `Resource: ${finding.resourceType} - ${finding.resourceName}`,
       "",
       `Remediation: ${finding.remediation}`,
     ].join("\n");
@@ -60,13 +60,13 @@ export async function postSummaryComment(
 ): Promise<void> {
   const token = core.getInput("github-token") || process.env.GITHUB_TOKEN;
   if (!token) {
-    core.warning("No GitHub token available — skipping PR comment. Set the 'github-token' input or ensure GITHUB_TOKEN is in the environment.");
+    core.warning("No GitHub token available - skipping PR comment. Set the 'github-token' input or ensure GITHUB_TOKEN is in the environment.");
     return;
   }
 
   const context = github.context;
   if (!context.payload.pull_request) {
-    core.debug("Not a pull request event — skipping PR comment");
+    core.debug("Not a pull request event - skipping PR comment");
     return;
   }
 
@@ -114,10 +114,10 @@ function buildCommentBody(
   passed: boolean,
   apiUrl: string,
 ): string {
-  // No controls evaluated — nothing relevant in the diff
+  // No controls evaluated - nothing relevant in the diff
   if (summary.total === 0) {
     const lines: string[] = [
-      "### ⏭️ Compliance Scan — No Relevant Changes",
+      "### ⏭️ Compliance Scan - No Relevant Changes",
       "",
       "No infrastructure or policy-relevant code was found in this PR's changed files.",
       "Controls are evaluated when changes include Terraform, Kubernetes, Dockerfiles, CI configs, IAM policies, environment files, or application source code.",
@@ -170,7 +170,7 @@ function buildCommentBody(
     for (const f of shown) {
       const icon = SEVERITY_ICONS[f.severity] || "";
       lines.push(
-        `- ${icon} **${f.ruleId}** in \`${f.resourcePath}\` — ${f.message}`,
+        `- ${icon} **${f.ruleId}** in \`${f.resourcePath}\` - ${f.message}`,
       );
       lines.push(`  - Remediation: ${f.remediation}`);
     }
@@ -207,7 +207,7 @@ export function writeJobSummary(
 
   if (summary.total === 0) {
     md = [
-      `## Compliance Code Scanner — ⏭️ No Relevant Changes`,
+      `## Compliance Code Scanner - ⏭️ No Relevant Changes`,
       "",
       `${fileCount} file(s) scanned. No infrastructure or policy-relevant code found in this PR.`,
       "",
@@ -216,7 +216,7 @@ export function writeJobSummary(
   } else {
     const status = passed ? "✅ Passed" : "❌ Failed";
     md = [
-      `## Compliance Code Scanner — ${status}`,
+      `## Compliance Code Scanner - ${status}`,
       "",
       `| Files scanned | Findings | Passed | Failed |`,
       `|:---:|:---:|:---:|:---:|`,
