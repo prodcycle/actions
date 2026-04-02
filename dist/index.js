@@ -30013,9 +30013,9 @@ function createAnnotations(findings) {
  * Post or update a summary comment on the PR.
  */
 async function postSummaryComment(findings, summary, scanId, passed, apiUrl) {
-    const token = process.env.GITHUB_TOKEN;
+    const token = core.getInput("github-token") || process.env.GITHUB_TOKEN;
     if (!token) {
-        core.warning("GITHUB_TOKEN not available — skipping PR comment");
+        core.warning("No GitHub token available — skipping PR comment. Set the 'github-token' input or ensure GITHUB_TOKEN is in the environment.");
         return;
     }
     const context = github.context;
