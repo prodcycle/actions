@@ -1,5 +1,5 @@
 // =============================================================================
-// ProdCycle Compliance Verification Action — Diff Collection
+// ProdCycle Compliance Code Scanner — Diff Collection
 // =============================================================================
 //
 // Collects changed files from a PR by comparing the base and head refs.

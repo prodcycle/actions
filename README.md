@@ -1,4 +1,4 @@
-# ProdCycle Compliance Verification Action
+# ProdCycle Compliance Code Scanner
 
 A GitHub Action that scans pull request changes for compliance violations against SOC 2, HIPAA, ISO 27001, NIST CSF, PCI DSS, GDPR, and CCPA frameworks via the [ProdCycle](https://prodcycle.com) API.
 
@@ -18,7 +18,7 @@ On every pull request:
 
 ```yaml
 # .github/workflows/compliance.yml
-name: Compliance Verification
+name: Compliance Code Scanner
 on:
   pull_request:
 
@@ -32,7 +32,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: prodcycle/compliance-verification-action@v1
+      - uses: prodcycle/compliance-code-scanner@v1
         with:
           api-key: ${{ secrets.PRODCYCLE_CVK }}
 ```
@@ -88,7 +88,7 @@ Create `.github/workflows/compliance.yml` in your repository with the configurat
 ### Scan specific frameworks
 
 ```yaml
-- uses: prodcycle/compliance-verification-action@v1
+- uses: prodcycle/compliance-code-scanner@v1
   with:
     api-key: ${{ secrets.PRODCYCLE_CVK }}
     frameworks: soc2,hipaa
@@ -97,7 +97,7 @@ Create `.github/workflows/compliance.yml` in your repository with the configurat
 ### Only fail on critical findings
 
 ```yaml
-- uses: prodcycle/compliance-verification-action@v1
+- uses: prodcycle/compliance-code-scanner@v1
   with:
     api-key: ${{ secrets.PRODCYCLE_CVK }}
     fail-on: critical
@@ -106,7 +106,7 @@ Create `.github/workflows/compliance.yml` in your repository with the configurat
 ### Scan only infrastructure files
 
 ```yaml
-- uses: prodcycle/compliance-verification-action@v1
+- uses: prodcycle/compliance-code-scanner@v1
   with:
     api-key: ${{ secrets.PRODCYCLE_CVK }}
     include: "**/*.tf,**/*.yaml,**/*.yml,**/Dockerfile"
@@ -116,7 +116,7 @@ Create `.github/workflows/compliance.yml` in your repository with the configurat
 ### Use outputs in subsequent steps
 
 ```yaml
-- uses: prodcycle/compliance-verification-action@v1
+- uses: prodcycle/compliance-code-scanner@v1
   id: compliance
   with:
     api-key: ${{ secrets.PRODCYCLE_CVK }}
@@ -131,7 +131,7 @@ Create `.github/workflows/compliance.yml` in your repository with the configurat
 ### Self-hosted ProdCycle instance
 
 ```yaml
-- uses: prodcycle/compliance-verification-action@v1
+- uses: prodcycle/compliance-code-scanner@v1
   with:
     api-key: ${{ secrets.PRODCYCLE_CVK }}
     api-url: https://api.yourcompany.com
@@ -173,7 +173,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for more details.
 ## Support
 
 - 📖 [ProdCycle Documentation](https://docs.prodcycle.com)
-- 🐛 [Report an issue](https://github.com/prodcycle/compliance-verification-action/issues)
+- 🐛 [Report an issue](https://github.com/prodcycle/compliance-code-scanner/issues)
 - 🔒 [Security policy](SECURITY.md)
 - 💬 [Contact support](mailto:support@prodcycle.com)
 

@@ -29928,7 +29928,7 @@ function wrappy (fn, cb) {
 "use strict";
 
 // =============================================================================
-// ProdCycle Compliance Verification Action — PR Annotations & Comments
+// ProdCycle Compliance Code Scanner — PR Annotations & Comments
 // =============================================================================
 var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
     if (k2 === undefined) k2 = k;
@@ -30027,7 +30027,7 @@ async function postSummaryComment(findings, summary, scanId, passed, apiUrl) {
     const prNumber = context.payload.pull_request.number;
     const { owner, repo } = context.repo;
     const body = buildCommentBody(findings, summary, scanId, passed, apiUrl);
-    const marker = "<!-- prodcycle-compliance-verification -->";
+    const marker = "<!-- prodcycle-compliance-code-scanner -->";
     const fullBody = `${marker}\n${body}`;
     // Look for an existing comment to update
     const { data: comments } = await octokit.rest.issues.listComments({
@@ -30115,7 +30115,7 @@ function buildCommentBody(findings, summary, scanId, passed, apiUrl) {
 function writeJobSummary(summary, scanId, passed, fileCount) {
     const status = passed ? "✅ Passed" : "❌ Failed";
     const md = [
-        `## Compliance Verification — ${status}`,
+        `## Compliance Code Scanner — ${status}`,
         "",
         `| Files scanned | Findings | Passed | Failed |`,
         `|:---:|:---:|:---:|:---:|`,
@@ -30135,7 +30135,7 @@ function writeJobSummary(summary, scanId, passed, fileCount) {
 "use strict";
 
 // =============================================================================
-// ProdCycle Compliance Verification Action — API Client
+// ProdCycle Compliance Code Scanner — API Client
 // =============================================================================
 var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
     if (k2 === undefined) k2 = k;
@@ -30219,7 +30219,7 @@ class ComplianceApiClient {
                         "Content-Type": "application/json",
                         Authorization: `Bearer ${this.apiKey}`,
                         "x-api-version": "v1",
-                        "User-Agent": "prodcycle/compliance-verification-action",
+                        "User-Agent": "prodcycle/compliance-code-scanner",
                     },
                     body: JSON.stringify(body),
                     signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
@@ -30276,7 +30276,7 @@ function sleep(ms) {
 "use strict";
 
 // =============================================================================
-// ProdCycle Compliance Verification Action — Diff Collection
+// ProdCycle Compliance Code Scanner — Diff Collection
 // =============================================================================
 //
 // Collects changed files from a PR by comparing the base and head refs.
@@ -30424,7 +30424,7 @@ async function collectChangedFiles(baseSha, headSha, repoRoot, include, exclude)
 "use strict";
 
 // =============================================================================
-// ProdCycle Compliance Verification Action — Entry Point
+// ProdCycle Compliance Code Scanner — Entry Point
 // =============================================================================
 //
 // Flow:

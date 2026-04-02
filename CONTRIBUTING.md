@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for your interest in contributing to the ProdCycle Compliance Verification Action!
+Thanks for your interest in contributing to the ProdCycle Compliance Code Scanner!
 
 ## Development
 

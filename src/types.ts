@@ -1,5 +1,5 @@
 // =============================================================================
-// ProdCycle Compliance Verification Action — Shared Types
+// ProdCycle Compliance Code Scanner — Shared Types
 // =============================================================================
 
 /** Action inputs parsed from action.yml */

@@ -1,5 +1,5 @@
 // =============================================================================
-// ProdCycle Compliance Verification Action — API Client
+// ProdCycle Compliance Code Scanner — API Client
 // =============================================================================
 
 import * as core from "@actions/core";
@@ -70,7 +70,7 @@ export class ComplianceApiClient {
             "Content-Type": "application/json",
             Authorization: `Bearer ${this.apiKey}`,
             "x-api-version": "v1",
-            "User-Agent": "prodcycle/compliance-verification-action",
+            "User-Agent": "prodcycle/compliance-code-scanner",
           },
           body: JSON.stringify(body),
           signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),

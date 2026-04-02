@@ -1,5 +1,5 @@
 // =============================================================================
-// ProdCycle Compliance Verification Action — Entry Point
+// ProdCycle Compliance Code Scanner — Entry Point
 // =============================================================================
 //
 // Flow:

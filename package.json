@@ -1,5 +1,5 @@
 {
-  "name": "@prodcycle/compliance-verification-action",
+  "name": "@prodcycle/compliance-code-scanner",
   "version": "1.0.0",
   "description": "GitHub Action to scan PR changes for compliance violations via ProdCycle API",
   "private": true,
@@ -24,11 +24,11 @@
   "author": "ProdCycle <support@prodcycle.com> (https://prodcycle.com)",
   "repository": {
     "type": "git",
-    "url": "https://github.com/prodcycle/compliance-verification-action.git"
+    "url": "https://github.com/prodcycle/compliance-code-scanner.git"
   },
-  "homepage": "https://github.com/prodcycle/compliance-verification-action#readme",
+  "homepage": "https://github.com/prodcycle/compliance-code-scanner#readme",
   "bugs": {
-    "url": "https://github.com/prodcycle/compliance-verification-action/issues"
+    "url": "https://github.com/prodcycle/compliance-code-scanner/issues"
   },
   "license": "MIT",
   "dependencies": {

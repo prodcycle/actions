@@ -1,5 +1,5 @@
 // =============================================================================
-// ProdCycle Compliance Verification Action — PR Annotations & Comments
+// ProdCycle Compliance Code Scanner — PR Annotations & Comments
 // =============================================================================
 
 import * as core from "@actions/core";
@@ -75,7 +75,7 @@ export async function postSummaryComment(
   const { owner, repo } = context.repo;
 
   const body = buildCommentBody(findings, summary, scanId, passed, apiUrl);
-  const marker = "<!-- prodcycle-compliance-verification -->";
+  const marker = "<!-- prodcycle-compliance-code-scanner -->";
   const fullBody = `${marker}\n${body}`;
 
   // Look for an existing comment to update
@@ -193,7 +193,7 @@ export function writeJobSummary(
   const status = passed ? "✅ Passed" : "❌ Failed";
 
   const md = [
-    `## Compliance Verification — ${status}`,
+    `## Compliance Code Scanner — ${status}`,
     "",
     `| Files scanned | Findings | Passed | Failed |`,
     `|:---:|:---:|:---:|:---:|`,

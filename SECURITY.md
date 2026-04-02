@@ -16,7 +16,7 @@ We will acknowledge your report within 2 business days and aim to provide a fix 
 
 ## Scope
 
-This policy covers the `prodcycle/compliance-verification-action` GitHub Action code. For vulnerabilities in the ProdCycle API or platform, please report those separately at [prodcycle.com/security](https://prodcycle.com/security).
+This policy covers the `prodcycle/compliance-code-scanner` GitHub Action code. For vulnerabilities in the ProdCycle API or platform, please report those separately at [prodcycle.com/security](https://prodcycle.com/security).
 
 ## API Key Security
 
