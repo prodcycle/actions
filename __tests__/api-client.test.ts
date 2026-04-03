@@ -7,7 +7,8 @@ vi.mock("@actions/core", () => ({
   warning: vi.fn(),
 }));
 
-import { ComplianceApiClient } from "../src/api-client";
+import { ComplianceApiClient, createBatches } from "../src/api-client";
+import type { ChangedFile } from "../src/types";
 
 describe("ComplianceApiClient", () => {
   const mockApiUrl = "https://api.prodcycle.com";
@@ -146,5 +147,177 @@ describe("ComplianceApiClient", () => {
 
     expect(result.scanId).toBe("scan-retry");
     expect(fetchSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it("splits large payloads into multiple batches and merges results", async () => {
+    // Create files that are large enough to require batching
+    // Each file ~1 MB → 4 MB limit means ~4 files per batch, so 6 files = 2 batches
+    const largeContent = "x".repeat(1024 * 1024); // 1 MB
+    const files: ChangedFile[] = Array.from({ length: 6 }, (_, i) => ({
+      path: `file-${i}.tf`,
+      content: largeContent,
+    }));
+
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          status: "success",
+          statusCode: 200,
+          data: {
+            passed: true,
+            findingsCount: 1,
+            findings: [
+              {
+                ruleId: "rule-1",
+                controlId: "ctrl-1",
+                severity: "high",
+                confidence: "high",
+                engine: "opa",
+                framework: "soc2",
+                resourceType: "aws_s3_bucket",
+                resourcePath: "file-0.tf",
+                resourceName: "bucket",
+                message: "Finding in batch 1",
+                remediation: "Fix it",
+              },
+            ],
+            summary: {
+              total: 3,
+              passed: 2,
+              failed: 1,
+              bySeverity: { high: 1 },
+              byFramework: { soc2: 1 },
+            },
+            scanId: "scan-batch-1",
+          },
+        }),
+      } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          status: "success",
+          statusCode: 200,
+          data: {
+            passed: false,
+            findingsCount: 2,
+            findings: [
+              {
+                ruleId: "rule-2",
+                controlId: "ctrl-2",
+                severity: "critical",
+                confidence: "high",
+                engine: "opa",
+                framework: "hipaa",
+                resourceType: "aws_rds",
+                resourcePath: "file-4.tf",
+                resourceName: "db",
+                message: "Finding in batch 2",
+                remediation: "Fix it too",
+              },
+              {
+                ruleId: "rule-3",
+                controlId: "ctrl-3",
+                severity: "high",
+                confidence: "medium",
+                engine: "opa",
+                framework: "soc2",
+                resourceType: "aws_iam",
+                resourcePath: "file-5.tf",
+                resourceName: "role",
+                message: "Another finding in batch 2",
+                remediation: "Also fix",
+              },
+            ],
+            summary: {
+              total: 2,
+              passed: 0,
+              failed: 2,
+              bySeverity: { critical: 1, high: 1 },
+              byFramework: { hipaa: 1, soc2: 1 },
+            },
+            scanId: "scan-batch-2",
+          },
+        }),
+      } as Response);
+
+    const client = new ComplianceApiClient(mockApiUrl, mockApiKey);
+    const result = await client.validate(files);
+
+    // Should have made 2 API calls
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+
+    // Merged result: passed=false because batch 2 failed
+    expect(result.passed).toBe(false);
+
+    // Findings merged
+    expect(result.findingsCount).toBe(3);
+    expect(result.findings).toHaveLength(3);
+    expect(result.findings[0].ruleId).toBe("rule-1");
+    expect(result.findings[1].ruleId).toBe("rule-2");
+    expect(result.findings[2].ruleId).toBe("rule-3");
+
+    // Summary merged
+    expect(result.summary.total).toBe(5);
+    expect(result.summary.passed).toBe(2);
+    expect(result.summary.failed).toBe(3);
+    expect(result.summary.bySeverity).toEqual({ high: 2, critical: 1 });
+    expect(result.summary.byFramework).toEqual({ soc2: 2, hipaa: 1 });
+
+    // scanId from last batch
+    expect(result.scanId).toBe("scan-batch-2");
+  });
+});
+
+describe("createBatches", () => {
+  it("returns a single batch for small payloads", () => {
+    const files: ChangedFile[] = [
+      { path: "a.tf", content: "small" },
+      { path: "b.tf", content: "also small" },
+    ];
+    const batches = createBatches(files);
+    expect(batches).toHaveLength(1);
+    expect(batches[0]).toHaveLength(2);
+  });
+
+  it("splits large files into multiple batches", () => {
+    const largeContent = "x".repeat(1.5 * 1024 * 1024); // 1.5 MB each
+    const files: ChangedFile[] = [
+      { path: "a.tf", content: largeContent },
+      { path: "b.tf", content: largeContent },
+      { path: "c.tf", content: largeContent },
+      { path: "d.tf", content: largeContent },
+      { path: "e.tf", content: largeContent },
+    ];
+    const batches = createBatches(files);
+    // 1.5 MB * 2 = 3 MB fits in one batch (under 4 MB), so:
+    // batch 1: a, b  (~3 MB)
+    // batch 2: c, d  (~3 MB)
+    // batch 3: e     (~1.5 MB)
+    expect(batches).toHaveLength(3);
+    expect(batches[0]).toHaveLength(2);
+    expect(batches[1]).toHaveLength(2);
+    expect(batches[2]).toHaveLength(1);
+  });
+
+  it("puts a single oversized file in its own batch", () => {
+    const hugeContent = "x".repeat(5 * 1024 * 1024); // 5 MB
+    const files: ChangedFile[] = [
+      { path: "small.tf", content: "tiny" },
+      { path: "huge.tf", content: hugeContent },
+      { path: "another.tf", content: "also tiny" },
+    ];
+    const batches = createBatches(files);
+    expect(batches).toHaveLength(3);
+    expect(batches[0].map((f) => f.path)).toEqual(["small.tf"]);
+    expect(batches[1].map((f) => f.path)).toEqual(["huge.tf"]);
+    expect(batches[2].map((f) => f.path)).toEqual(["another.tf"]);
+  });
+
+  it("handles empty file list", () => {
+    const batches = createBatches([]);
+    expect(batches).toHaveLength(1);
+    expect(batches[0]).toHaveLength(0);
   });
 });
