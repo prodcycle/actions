@@ -16,10 +16,11 @@ const RETRY_DELAY_MS = 2_000;
 
 /**
  * Maximum payload size per request in bytes.
- * The API enforces a 5 MB limit; we target 4 MB to leave headroom for
- * JSON overhead (keys, brackets, escaping).
+ * The API enforces a 5 MB limit; we target 2 MB to leave ample headroom
+ * for JSON overhead (keys, brackets, escaping of special characters).
+ * If a batch still hits 413, the client will automatically re-split.
  */
-const MAX_BATCH_BYTES = 4 * 1024 * 1024; // 4 MB
+const MAX_BATCH_BYTES = 2 * 1024 * 1024; // 2 MB (conservative to avoid 413s after JSON escaping)
 
 /** Rough overhead per file entry: key quoting, colon, comma, escaping margin */
 const PER_FILE_OVERHEAD_BYTES = 128;
@@ -48,20 +49,70 @@ export class ComplianceApiClient {
     const batches = createBatches(files);
 
     if (batches.length === 1) {
-      return this.sendBatch(batches[0], options);
+      try {
+        return await this.sendBatch(batches[0], options);
+      } catch (err) {
+        if (err instanceof PayloadTooLargeError && batches[0].length > 1) {
+          core.warning(
+            "Single batch hit 413. Re-splitting into smaller batches.",
+          );
+          const mid = Math.ceil(batches[0].length / 2);
+          return this.sendBatchesWithSplitting(
+            [batches[0].slice(0, mid), batches[0].slice(mid)],
+            options,
+          );
+        }
+        throw err;
+      }
     }
 
     core.info(
       `Payload too large for a single request. Splitting into ${batches.length} batch(es).`,
     );
 
+    return this.sendBatchesWithSplitting(batches, options);
+  }
+
+  /**
+   * Send a list of batches, automatically re-splitting any batch that
+   * receives a 413 Payload Too Large response.
+   */
+  private async sendBatchesWithSplitting(
+    batches: ChangedFile[][],
+    options?: {
+      frameworks?: string[];
+      severityThreshold?: string;
+      failOn?: string[];
+    },
+  ): Promise<ValidateResponse> {
+    // Use a queue so batches can be split further on 413
+    const queue: ChangedFile[][] = [...batches];
     const results: ValidateResponse[] = [];
-    for (let i = 0; i < batches.length; i++) {
+    let batchIndex = 0;
+
+    while (queue.length > 0) {
+      const batch = queue.shift()!;
+      batchIndex++;
       core.info(
-        `Sending batch ${i + 1}/${batches.length} (${batches[i].length} file(s))...`,
+        `Sending batch ${batchIndex} (${batch.length} file(s))...`,
       );
-      const result = await this.sendBatch(batches[i], options);
-      results.push(result);
+
+      try {
+        const result = await this.sendBatch(batch, options);
+        results.push(result);
+      } catch (err) {
+        if (err instanceof PayloadTooLargeError && batch.length > 1) {
+          core.warning(
+            `Batch of ${batch.length} file(s) hit 413. Splitting in half and retrying.`,
+          );
+          const mid = Math.ceil(batch.length / 2);
+          // Push the two halves to the front of the queue
+          queue.unshift(batch.slice(0, mid), batch.slice(mid));
+          batchIndex--; // adjust counter since this batch didn't succeed
+        } else {
+          throw err;
+        }
+      }
     }
 
     return mergeResults(results);
@@ -127,6 +178,13 @@ export class ComplianceApiClient {
           const text = await response.text().catch(() => "");
           const error = tryParseError(text);
 
+          // Surface 413 as a specific error so validate() can re-split
+          if (response.status === 413) {
+            throw new PayloadTooLargeError(
+              `API error 413: ${error || text || "Request payload too large"}`,
+            );
+          }
+
           // Don't retry client errors (4xx) except 429
           if (
             response.status >= 400 &&
@@ -157,8 +215,11 @@ export class ComplianceApiClient {
       } catch (err) {
         lastError = err instanceof Error ? err : new Error(String(err));
 
-        // Don't retry non-retryable errors
-        if (lastError.message.includes("API error 4")) {
+        // Don't retry non-retryable errors (4xx, including 413)
+        if (
+          lastError instanceof PayloadTooLargeError ||
+          lastError.message.includes("API error 4")
+        ) {
           throw lastError;
         }
       }
@@ -261,6 +322,16 @@ function mergeResults(results: ValidateResponse[]): ValidateResponse {
   }
 
   return merged;
+}
+
+/**
+ * Custom error for 413 responses so the caller can catch and re-split.
+ */
+export class PayloadTooLargeError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "PayloadTooLargeError";
+  }
 }
 
 function tryParseError(text: string): string | undefined {

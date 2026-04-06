@@ -7,7 +7,7 @@ vi.mock("@actions/core", () => ({
   warning: vi.fn(),
 }));
 
-import { ComplianceApiClient, createBatches } from "../src/api-client";
+import { ComplianceApiClient, createBatches, PayloadTooLargeError } from "../src/api-client";
 import type { ChangedFile } from "../src/types";
 
 describe("ComplianceApiClient", () => {
@@ -112,6 +112,67 @@ describe("ComplianceApiClient", () => {
     ).rejects.toThrow("API error 403: Invalid API key");
   });
 
+  it("re-splits and retries on 413 Payload Too Large", async () => {
+    const makeSuccessResponse = (scanId: string) => ({
+      ok: true,
+      json: async () => ({
+        status: "success",
+        statusCode: 200,
+        data: {
+          passed: true,
+          findingsCount: 0,
+          findings: [],
+          summary: {
+            total: 0,
+            passed: 0,
+            failed: 0,
+            bySeverity: {},
+            byFramework: {},
+          },
+          scanId,
+        },
+      }),
+    } as Response);
+
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      // First call: all files in one batch → 413
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 413,
+        statusText: "Payload Too Large",
+        text: async () => "Request payload too large",
+      } as Response)
+      // After splitting: two batches succeed
+      .mockResolvedValueOnce(makeSuccessResponse("scan-split-1"))
+      .mockResolvedValueOnce(makeSuccessResponse("scan-split-2"));
+
+    const client = new ComplianceApiClient(mockApiUrl, mockApiKey);
+    const result = await client.validate([
+      { path: "a.tf", content: "aaa" },
+      { path: "b.tf", content: "bbb" },
+    ]);
+
+    // First attempt + 2 retried halves
+    expect(fetchSpy).toHaveBeenCalledTimes(3);
+    expect(result.passed).toBe(true);
+    expect(result.scanId).toBe("scan-split-2");
+  });
+
+  it("throws 413 for a single file that is too large", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce({
+      ok: false,
+      status: 413,
+      statusText: "Payload Too Large",
+      text: async () => "Request payload too large",
+    } as Response);
+
+    const client = new ComplianceApiClient(mockApiUrl, mockApiKey);
+    await expect(
+      client.validate([{ path: "huge.tf", content: "x".repeat(10_000_000) }]),
+    ).rejects.toThrow(PayloadTooLargeError);
+  });
+
   it("retries on 5xx server errors", async () => {
     const fetchSpy = vi
       .spyOn(globalThis, "fetch")
@@ -151,9 +212,9 @@ describe("ComplianceApiClient", () => {
 
   it("splits large payloads into multiple batches and merges results", async () => {
     // Create files that are large enough to require batching
-    // Each file ~1 MB → 4 MB limit means ~4 files per batch, so 6 files = 2 batches
-    const largeContent = "x".repeat(1024 * 1024); // 1 MB
-    const files: ChangedFile[] = Array.from({ length: 6 }, (_, i) => ({
+    // Each file ~0.8 MB → 2 MB limit means ~2 files per batch, so 4 files = 2 batches
+    const largeContent = "x".repeat(800 * 1024); // 0.8 MB
+    const files: ChangedFile[] = Array.from({ length: 4 }, (_, i) => ({
       path: `file-${i}.tf`,
       content: largeContent,
     }));
@@ -251,7 +312,7 @@ describe("ComplianceApiClient", () => {
     // Merged result: passed=false because batch 2 failed
     expect(result.passed).toBe(false);
 
-    // Findings merged
+    // Findings merged: batch 1 has 1, batch 2 has 2
     expect(result.findingsCount).toBe(3);
     expect(result.findings).toHaveLength(3);
     expect(result.findings[0].ruleId).toBe("rule-1");
@@ -282,7 +343,7 @@ describe("createBatches", () => {
   });
 
   it("splits large files into multiple batches", () => {
-    const largeContent = "x".repeat(1.5 * 1024 * 1024); // 1.5 MB each
+    const largeContent = "x".repeat(0.8 * 1024 * 1024); // 0.8 MB each
     const files: ChangedFile[] = [
       { path: "a.tf", content: largeContent },
       { path: "b.tf", content: largeContent },
@@ -291,10 +352,10 @@ describe("createBatches", () => {
       { path: "e.tf", content: largeContent },
     ];
     const batches = createBatches(files);
-    // 1.5 MB * 2 = 3 MB fits in one batch (under 4 MB), so:
-    // batch 1: a, b  (~3 MB)
-    // batch 2: c, d  (~3 MB)
-    // batch 3: e     (~1.5 MB)
+    // 0.8 MB * 2 = 1.6 MB fits in one batch (under 2 MB), so:
+    // batch 1: a, b  (~1.6 MB)
+    // batch 2: c, d  (~1.6 MB)
+    // batch 3: e     (~0.8 MB)
     expect(batches).toHaveLength(3);
     expect(batches[0]).toHaveLength(2);
     expect(batches[1]).toHaveLength(2);
