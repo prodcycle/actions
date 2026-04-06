@@ -30200,8 +30200,9 @@ const MAX_RETRIES = 2;
 const RETRY_DELAY_MS = 2_000;
 /**
  * Maximum payload size per request in bytes.
- * The API enforces a 5 MB limit; we target 4 MB to leave headroom for
- * JSON overhead (keys, brackets, escaping).
+ * The API enforces a 5 MB limit; we target 2 MB to leave ample headroom
+ * for JSON overhead (keys, brackets, escaping of special characters).
+ * If a batch still hits 413, the client will automatically re-split.
  */
 const MAX_BATCH_BYTES = 2 * 1024 * 1024; // 2 MB (conservative to avoid 413s after JSON escaping)
 /** Rough overhead per file entry: key quoting, colon, comma, escaping margin */
