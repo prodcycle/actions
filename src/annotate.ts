@@ -279,13 +279,17 @@ export async function postReviewComments(
       line: f.endLine,
     };
 
-    // Use multi-line comment if the finding spans more than one line
-    // and the start line is also within the diff
+    // Use multi-line comment if both start and end fall within the same hunk.
+    // GitHub requires both endpoints in the same hunk or the review is rejected.
     if (f.startLine > 0 && f.startLine < f.endLine) {
-      const startInDiff = fileRanges.some(
-        (range) => f.startLine >= range.start && f.startLine <= range.end,
+      const sharedHunk = fileRanges.find(
+        (range) =>
+          f.startLine >= range.start &&
+          f.startLine <= range.end &&
+          f.endLine >= range.start &&
+          f.endLine <= range.end,
       );
-      if (startInDiff) {
+      if (sharedHunk) {
         comment.start_line = f.startLine;
       }
     }
@@ -359,7 +363,7 @@ async function fetchDiffRanges(
   const ranges = new Map<string, DiffRange[]>();
 
   try {
-    const { data: files } = await octokit.rest.pulls.listFiles({
+    const files = await octokit.paginate(octokit.rest.pulls.listFiles, {
       owner,
       repo,
       pull_number: prNumber,

@@ -34,6 +34,17 @@ const mockListComments = vi.fn().mockResolvedValue({ data: [] });
 const mockCreateComment = vi.fn();
 const mockUpdateComment = vi.fn();
 
+const mockPaginate = vi.fn().mockResolvedValue([
+  {
+    filename: "src/auth.ts",
+    patch: "@@ -5,20 +5,25 @@\n some diff content",
+  },
+  {
+    filename: "src/db.ts",
+    patch: "@@ -18,5 +18,8 @@\n some diff content",
+  },
+]);
+
 vi.mock("@actions/github", () => ({
   context: {
     payload: {
@@ -54,6 +65,7 @@ vi.mock("@actions/github", () => ({
         updateComment: mockUpdateComment,
       },
     },
+    paginate: mockPaginate,
   })),
 }));
 
@@ -164,7 +176,7 @@ describe("annotate", () => {
       mockCreateReview.mockResolvedValue({ data: {} });
       await postReviewComments(findings, false);
 
-      expect(mockListFiles).toHaveBeenCalledOnce();
+      expect(mockPaginate).toHaveBeenCalledOnce();
       expect(mockCreateReview).toHaveBeenCalledOnce();
       const call = mockCreateReview.mock.calls[0][0];
 
