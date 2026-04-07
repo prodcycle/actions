@@ -3,7 +3,7 @@
 ## Project Overview
 
 This is a GitHub Action (`prodcycle/compliance-code-scanner`) that scans PR file
-changes for SOC 2 and HIPAA compliance violations via the ProdCycle API. It runs
+changes for SOC 2, HIPAA, and NIST compliance violations via the ProdCycle API. It runs
 as a Node.js action (`node24`) with the compiled bundle at `dist/index.js`.
 
 ## Architecture

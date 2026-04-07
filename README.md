@@ -1,6 +1,6 @@
 # ProdCycle Compliance Code Scanner
 
-A GitHub Action that scans pull request changes for compliance violations against SOC 2 and HIPAA frameworks via the [ProdCycle](https://prodcycle.com) API.
+A GitHub Action that scans pull request changes for compliance violations against SOC 2, HIPAA, and NIST frameworks via the [ProdCycle](https://prodcycle.com) API.
 
 > **Requires a ProdCycle account.** This action calls the ProdCycle compliance API, which requires a valid API key (`pc_...`). [Sign up at prodcycle.com](https://app.prodcycle.com) to get started.
 
@@ -66,7 +66,7 @@ Create `.github/workflows/compliance.yml` in your repository with the configurat
 | -------------------- | -------- | --------------------------- | ------------------------------------------------------------------------ |
 | `api-key`            | Yes      |                             | ProdCycle compliance API key (`pc_...`)                                  |
 | `api-url`            | No       | `https://api.prodcycle.com` | ProdCycle API base URL                                                   |
-| `frameworks`         | No       | Workspace setting           | Comma-separated framework IDs (`soc2,hipaa`)                             |
+| `frameworks`         | No       | Workspace setting           | Comma-separated framework IDs (`soc2,hipaa,nist`)                        |
 | `fail-on`            | No       | `critical,high`             | Comma-separated severities that fail the check                           |
 | `severity-threshold` | No       | `low`                       | Minimum severity to include in results                                   |
 | `include`            | No       | All changed files           | Comma-separated glob patterns to include (`**/*.tf,**/*.yaml`)           |
@@ -91,7 +91,7 @@ Create `.github/workflows/compliance.yml` in your repository with the configurat
 - uses: prodcycle/compliance-code-scanner@v1
   with:
     api-key: ${{ secrets.PRODCYCLE_API_KEY }}
-    frameworks: soc2,hipaa
+    frameworks: soc2,hipaa,nist
 ```
 
 ### Only fail on critical findings
@@ -139,10 +139,11 @@ Create `.github/workflows/compliance.yml` in your repository with the configurat
 
 ## Supported frameworks
 
-| ID     | Framework |
-| ------ | --------- |
-| `soc2` | SOC 2     |
-| `hipaa`| HIPAA     |
+| ID     | Framework                              |
+| ------ | -------------------------------------- |
+| `soc2` | SOC 2                                  |
+| `hipaa`| HIPAA                                  |
+| `nist` | NIST 800-53 / Cybersecurity Framework  |
 
 If no `frameworks` input is specified, the action uses the frameworks configured on your ProdCycle workspace.
 
