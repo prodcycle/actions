@@ -81,7 +81,9 @@ export async function postSummaryComment(
   const prNumber = context.payload.pull_request.number;
   const { owner, repo } = context.repo;
 
-  const body = buildCommentBody(findings, summary, scanId, passed, _apiUrl);
+  const headSha = context.payload.pull_request.head?.sha || "";
+  const repoUrl = `https://github.com/${owner}/${repo}`;
+  const body = buildCommentBody(findings, summary, scanId, passed, repoUrl, headSha);
   const marker = "<!-- prodcycle-compliance-code-scanner -->";
   const fullBody = `${marker}\n${body}`;
 
@@ -119,7 +121,8 @@ function buildCommentBody(
   summary: ValidateSummary,
   scanId: string,
   passed: boolean,
-  _apiUrl: string,
+  repoUrl: string,
+  headSha: string,
 ): string {
   if (summary.total === 0) {
     const lines: string[] = [
@@ -174,8 +177,18 @@ function buildCommentBody(
     const shown = findings.slice(0, 10);
     for (const f of shown) {
       const icon = SEVERITY_ICONS[f.severity] || "";
+      let location: string;
+      if (f.startLine && headSha) {
+        const lineFragment = f.endLine && f.endLine !== f.startLine
+          ? `L${f.startLine}-L${f.endLine}`
+          : `L${f.startLine}`;
+        const link = `${repoUrl}/blob/${headSha}/${f.resourcePath}#${lineFragment}`;
+        location = `\`${f.resourcePath}\`, line ${f.startLine}${f.endLine && f.endLine !== f.startLine ? `-${f.endLine}` : ""} ([link](${link}))`;
+      } else {
+        location = `\`${f.resourcePath}\``;
+      }
       lines.push(
-        `- ${icon} **${f.ruleId}** in \`${f.resourcePath}\`: ${f.message}`,
+        `- ${icon} **${f.ruleId}** in ${location}: ${f.message}`,
       );
       lines.push(`  - Remediation: ${f.remediation}`);
     }

@@ -30034,7 +30034,9 @@ async function postSummaryComment(findings, summary, scanId, passed, _apiUrl) {
     const octokit = github.getOctokit(token);
     const prNumber = context.payload.pull_request.number;
     const { owner, repo } = context.repo;
-    const body = buildCommentBody(findings, summary, scanId, passed, _apiUrl);
+    const headSha = context.payload.pull_request.head?.sha || "";
+    const repoUrl = `https://github.com/${owner}/${repo}`;
+    const body = buildCommentBody(findings, summary, scanId, passed, repoUrl, headSha);
     const marker = "<!-- prodcycle-compliance-code-scanner -->";
     const fullBody = `${marker}\n${body}`;
     // Look for an existing comment to update
@@ -30064,7 +30066,7 @@ async function postSummaryComment(findings, summary, scanId, passed, _apiUrl) {
         core.debug("Created new PR comment");
     }
 }
-function buildCommentBody(findings, summary, scanId, passed, _apiUrl) {
+function buildCommentBody(findings, summary, scanId, passed, repoUrl, headSha) {
     if (summary.total === 0) {
         const lines = [
             "### ✅ Compliance Check Passed",
@@ -30111,7 +30113,18 @@ function buildCommentBody(findings, summary, scanId, passed, _apiUrl) {
         const shown = findings.slice(0, 10);
         for (const f of shown) {
             const icon = SEVERITY_ICONS[f.severity] || "";
-            lines.push(`- ${icon} **${f.ruleId}** in \`${f.resourcePath}\`: ${f.message}`);
+            let location;
+            if (f.startLine && headSha) {
+                const lineFragment = f.endLine && f.endLine !== f.startLine
+                    ? `L${f.startLine}-L${f.endLine}`
+                    : `L${f.startLine}`;
+                const link = `${repoUrl}/blob/${headSha}/${f.resourcePath}#${lineFragment}`;
+                location = `\`${f.resourcePath}\`, line ${f.startLine}${f.endLine && f.endLine !== f.startLine ? `-${f.endLine}` : ""} ([link](${link}))`;
+            }
+            else {
+                location = `\`${f.resourcePath}\``;
+            }
+            lines.push(`- ${icon} **${f.ruleId}** in ${location}: ${f.message}`);
             lines.push(`  - Remediation: ${f.remediation}`);
         }
         if (findings.length > 10) {
@@ -30636,9 +30649,15 @@ exports.PayloadTooLargeError = PayloadTooLargeError;
  * The API returns `line` and `endLine` but the action uses `startLine` and `endLine`.
  * This maps `line` → `startLine` so downstream code can use a consistent interface.
  */
+/**
+ * Normalize API response findings.
+ * - Maps `line` → `startLine` (API uses `line`, action uses `startLine`)
+ * - Maps `controlId` → `ruleId` when `ruleId` is absent (API doesn't return `ruleId`)
+ */
 function normalizeFindings(response) {
     response.findings = response.findings.map((f) => ({
         ...f,
+        ruleId: f.ruleId || f.controlId || "unknown",
         startLine: f.startLine || f.line || 0,
         endLine: f.endLine || 0,
     }));

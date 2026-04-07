@@ -43,6 +43,7 @@ export interface ValidateResponse {
 }
 
 export interface ScanFinding {
+  /** Rule ID — mapped from controlId if not present in API response */
   ruleId: string;
   controlId: string;
   severity: string;

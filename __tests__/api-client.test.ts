@@ -369,6 +369,43 @@ describe("ComplianceApiClient", () => {
     expect(result.findings[0].endLine).toBe(45);
   });
 
+  it("maps controlId to ruleId when ruleId is absent", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        status: "success",
+        statusCode: 200,
+        data: {
+          passed: false,
+          findingsCount: 1,
+          findings: [
+            {
+              controlId: "SOC2-3.5-01",
+              severity: "high",
+              confidence: "high",
+              engine: "rego",
+              framework: "soc2",
+              resourceType: "source_code",
+              resourcePath: "src/auth.ts",
+              resourceName: "auth.ts",
+              message: "Credential in log",
+              remediation: "Remove it",
+              line: 10,
+              endLine: 10,
+            },
+          ],
+          summary: { total: 1, passed: 0, failed: 1, bySeverity: { high: 1 }, byFramework: { soc2: 1 } },
+          scanId: "scan-ruleid",
+        },
+      }),
+    } as Response);
+
+    const client = new ComplianceApiClient(mockApiUrl, mockApiKey);
+    const result = await client.validate([{ path: "src/auth.ts", content: "" }]);
+
+    expect(result.findings[0].ruleId).toBe("SOC2-3.5-01");
+  });
+
   it("defaults startLine and endLine to 0 when API omits line info", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce({
       ok: true,

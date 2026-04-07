@@ -339,9 +339,15 @@ export class PayloadTooLargeError extends Error {
  * The API returns `line` and `endLine` but the action uses `startLine` and `endLine`.
  * This maps `line` → `startLine` so downstream code can use a consistent interface.
  */
+/**
+ * Normalize API response findings.
+ * - Maps `line` → `startLine` (API uses `line`, action uses `startLine`)
+ * - Maps `controlId` → `ruleId` when `ruleId` is absent (API doesn't return `ruleId`)
+ */
 function normalizeFindings(response: ValidateResponse): ValidateResponse {
   response.findings = response.findings.map((f) => ({
     ...f,
+    ruleId: f.ruleId || f.controlId || "unknown",
     startLine: f.startLine || f.line || 0,
     endLine: f.endLine || 0,
   }));
