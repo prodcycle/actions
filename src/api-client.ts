@@ -342,7 +342,7 @@ export class PayloadTooLargeError extends Error {
 function normalizeFindings(response: ValidateResponse): ValidateResponse {
   response.findings = response.findings.map((f) => ({
     ...f,
-    startLine: f.startLine || (f as unknown as { line?: number }).line || 0,
+    startLine: f.startLine || f.line || 0,
     endLine: f.endLine || 0,
   }));
   return response;
