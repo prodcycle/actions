@@ -1,23 +1,30 @@
-# Agent Guidelines for compliance-code-scanner
+# Agent Guidelines for prodcycle/actions
 
 ## Project Overview
 
-This is a GitHub Action (`prodcycle/compliance-code-scanner`) that scans PR file
-changes for SOC 2, HIPAA, and NIST compliance violations via the ProdCycle API. It runs
-as a Node.js action (`node24`) with the compiled bundle at `dist/index.js`.
+This is a monorepo of GitHub Actions (`prodcycle/actions`) for the ProdCycle platform.
+Each action lives in its own subdirectory (e.g. `compliance-scanner/`) with its own
+`action.yml` and compiled `dist/` bundle. The root `action.yml` defaults to the
+compliance scanner.
+
+Users reference actions as:
+- `prodcycle/actions@v1` — default (compliance scanner)
+- `prodcycle/actions/compliance-scanner@v1` — explicit
 
 ## Architecture
 
 ```
+compliance-scanner/   # Compliance Code Scanner action
+  action.yml          # Action metadata (inputs, outputs, branding)
+  dist/               # Compiled bundle (ncc) — MUST be committed and kept in sync
+action.yml            # Root action — defaults to compliance-scanner
 src/
-  index.ts        # Entry point: parses inputs, orchestrates the flow
-  diff.ts         # Collects changed files from git diff between base/head
-  api-client.ts   # Calls POST /v1/compliance/validate with batching & retry
-  annotate.ts     # Creates PR annotations, comments, and job summaries
-  types.ts        # Shared TypeScript interfaces
-__tests__/        # Vitest tests mirroring src/ structure
-dist/             # Compiled bundle (ncc) — MUST be committed and kept in sync
-action.yml        # GitHub Action metadata (inputs, outputs, branding)
+  index.ts            # Entry point: parses inputs, orchestrates the flow
+  diff.ts             # Collects changed files from git diff between base/head
+  api-client.ts       # Calls POST /v1/compliance/validate with batching & retry
+  annotate.ts         # Creates PR annotations, comments, and job summaries
+  types.ts            # Shared TypeScript interfaces
+__tests__/            # Vitest tests mirroring src/ structure
 ```
 
 ## Key Commands
@@ -25,19 +32,19 @@ action.yml        # GitHub Action metadata (inputs, outputs, branding)
 - `pnpm run test` — run all tests (vitest)
 - `pnpm run type-check` — TypeScript type checking
 - `pnpm run lint` — ESLint
-- `pnpm run build` — compile with ncc into `dist/`
+- `pnpm run build` — compile with ncc into `compliance-scanner/dist/`
 - `pnpm run all` — type-check + lint + test + build
 
 ## Critical Rules
 
 ### dist/ must always be rebuilt
 
-The `dist/` directory is the compiled action bundle and **must be committed**.
-CI enforces this with a `git diff --name-only dist/` check. After any source
-change:
+The `compliance-scanner/dist/` directory is the compiled action bundle and **must
+be committed**. CI enforces this with a `git diff --name-only compliance-scanner/dist/`
+check. After any source change:
 
 1. Run `pnpm run build`
-2. Commit the updated `dist/` files alongside source changes
+2. Commit the updated `compliance-scanner/dist/` files alongside source changes
 
 ### API payload batching
 

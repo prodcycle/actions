@@ -1,5 +1,5 @@
-name: "ProdCycle Actions"
-description: "A set of GitHub Actions for ProdCycle. Defaults to the Compliance Code Scanner."
+name: "ProdCycle Compliance Code Scanner"
+description: "Scan PR changes for SOC 2, HIPAA, and NIST compliance violations via ProdCycle API"
 
 branding:
   icon: "shield"
@@ -66,4 +66,4 @@ outputs:
 
 runs:
   using: "node24"
-  main: "compliance-scanner/dist/index.js"
+  main: "dist/index.js"

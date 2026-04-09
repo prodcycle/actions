@@ -192,7 +192,7 @@ export class ComplianceApiClient {
             "Content-Type": "application/json",
             Authorization: `Bearer ${this.apiKey}`,
             "x-api-version": "v1",
-            "User-Agent": "prodcycle/compliance-code-scanner",
+            "User-Agent": "prodcycle/actions/compliance-scanner",
           },
           body: JSON.stringify(body),
           signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),

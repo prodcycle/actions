@@ -1,30 +1,18 @@
-# ProdCycle Compliance Code Scanner
+# ProdCycle Actions
 
-A GitHub Action that scans pull request changes for compliance violations against SOC 2, HIPAA, and NIST frameworks via the [ProdCycle](https://prodcycle.com) API.
+A set of GitHub Actions for using [ProdCycle](https://prodcycle.com) in your CI/CD pipelines. A different action is available depending on your use case.
 
-> **Requires a ProdCycle account.** This action calls the ProdCycle compliance API, which requires a valid API key (`pc_...`). [Sign up at prodcycle.com](https://app.prodcycle.com) to get started.
+> **Requires a ProdCycle account.** These actions call the ProdCycle API, which requires a valid API key (`pc_...`). [Sign up at prodcycle.com](https://app.prodcycle.com) to get started.
 
-## How it works
+## Supported Actions
 
-The action supports two modes (managed automatically by default):
-
-**1. Pull Request mode (diff scan)**
-When run on a `pull_request` event:
-- Collects the **diffs** of changed files from the PR (only the changed lines are analyzed)
-- Sends them to the ProdCycle compliance check API
-- Creates inline annotations on the PR for each finding
-- Posts a summary comment with severity and framework breakdown
-- Fails the check if findings match the configured severity threshold
-
-**2. Push / Merge mode (full scan)**
-When run on a `push` event (e.g., merge to `main`):
-- Collects and scans the **entire codebase**
-- Validates all tracked files against compliance frameworks
-- Reports any findings in the GitHub Actions summary
+| Action | Description |
+| ------ | ----------- |
+| [Compliance Scanner](compliance-scanner/) | Scan PR changes for SOC 2, HIPAA, and NIST compliance violations |
 
 ## Quick start
 
-Add the following workflow to automatically scan both pull requests and merges to your default branch:
+Here's an example using the Compliance Scanner action:
 
 ```yaml
 # .github/workflows/compliance.yml
@@ -46,10 +34,135 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: prodcycle/compliance-code-scanner@v1
+      - uses: prodcycle/actions/compliance-scanner@v1
         with:
           api-key: ${{ secrets.PRODCYCLE_API_KEY }}
 ```
+
+You can also reference the root action directly, which defaults to the Compliance Scanner:
+
+```yaml
+- uses: prodcycle/actions@v1
+  with:
+    api-key: ${{ secrets.PRODCYCLE_API_KEY }}
+```
+
+## Compliance Scanner
+
+The Compliance Scanner scans pull request changes for compliance violations against SOC 2, HIPAA, and NIST frameworks via the ProdCycle API.
+
+It supports two modes (managed automatically by default):
+
+**1. Pull Request mode (diff scan)**
+When run on a `pull_request` event:
+- Collects the **diffs** of changed files from the PR (only the changed lines are analyzed)
+- Sends them to the ProdCycle compliance check API
+- Creates inline annotations on the PR for each finding
+- Posts a summary comment with severity and framework breakdown
+- Fails the check if findings match the configured severity threshold
+
+**2. Push / Merge mode (full scan)**
+When run on a `push` event (e.g., merge to `main`):
+- Collects and scans the **entire codebase**
+- Validates all tracked files against compliance frameworks
+- Reports any findings in the GitHub Actions summary
+
+### Inputs
+
+| Input                | Required | Default                     | Description                                                              |
+| -------------------- | -------- | --------------------------- | ------------------------------------------------------------------------ |
+| `api-key`            | Yes      |                             | ProdCycle compliance API key (`pc_...`)                                  |
+| `api-url`            | No       | `https://api.prodcycle.com` | ProdCycle API base URL                                                   |
+| `frameworks`         | No       | Workspace setting           | Comma-separated framework IDs (`soc2,hipaa,nist`)                        |
+| `fail-on`            | No       | `critical,high`             | Comma-separated severities that fail the check                           |
+| `severity-threshold` | No       | `low`                       | Minimum severity to include in results                                   |
+| `include`            | No       | All changed files           | Comma-separated glob patterns to include (`**/*.tf,**/*.yaml`)           |
+| `exclude`            | No       | None                        | Comma-separated glob patterns to exclude (`test/**,docs/**`)             |
+| `scan-mode`          | No       | `auto`                      | `auto` (diff for PRs, full for pushes); `diff` (changed lines only); `full` (entire codebase) |
+| `annotate`           | No       | `true`                      | Create inline PR annotations for findings                                |
+| `comment`            | No       | `true`                      | Post a summary comment on the PR                                         |
+
+### Outputs
+
+| Output           | Description                                       |
+| ---------------- | ------------------------------------------------- |
+| `passed`         | Whether the scan passed (`true`/`false`)          |
+| `findings-count` | Total number of findings                          |
+| `scan-id`        | ProdCycle scan ID for linking to the dashboard    |
+| `summary`        | JSON summary of results by severity and framework |
+
+### Examples
+
+#### Scan specific frameworks
+
+```yaml
+- uses: prodcycle/actions/compliance-scanner@v1
+  with:
+    api-key: ${{ secrets.PRODCYCLE_API_KEY }}
+    frameworks: soc2,hipaa,nist
+```
+
+#### Only fail on critical findings
+
+```yaml
+- uses: prodcycle/actions/compliance-scanner@v1
+  with:
+    api-key: ${{ secrets.PRODCYCLE_API_KEY }}
+    fail-on: critical
+```
+
+#### Scan only infrastructure files
+
+```yaml
+- uses: prodcycle/actions/compliance-scanner@v1
+  with:
+    api-key: ${{ secrets.PRODCYCLE_API_KEY }}
+    include: "**/*.tf,**/*.yaml,**/*.yml,**/Dockerfile"
+    exclude: "test/**,docs/**"
+```
+
+#### Use outputs in subsequent steps
+
+```yaml
+- uses: prodcycle/actions/compliance-scanner@v1
+  id: compliance
+  with:
+    api-key: ${{ secrets.PRODCYCLE_API_KEY }}
+  continue-on-error: true
+
+- run: |
+    echo "Passed: ${{ steps.compliance.outputs.passed }}"
+    echo "Findings: ${{ steps.compliance.outputs.findings-count }}"
+    echo "Scan: ${{ steps.compliance.outputs.scan-id }}"
+```
+
+#### Explicit full codebase scan
+
+```yaml
+- uses: prodcycle/actions/compliance-scanner@v1
+  with:
+    api-key: ${{ secrets.PRODCYCLE_API_KEY }}
+    scan-mode: full
+```
+
+#### Self-hosted ProdCycle instance
+
+```yaml
+- uses: prodcycle/actions/compliance-scanner@v1
+  with:
+    api-key: ${{ secrets.PRODCYCLE_API_KEY }}
+    api-url: https://api.yourcompany.com
+```
+
+## Supported frameworks
+
+| ID     | Framework                              |
+| ------ | -------------------------------------- |
+| `soc2` | SOC 2                                  |
+| `hipaa`| HIPAA                                  |
+| `nist` | NIST 800-53 / Cybersecurity Framework  |
+
+If no `frameworks` input is specified, the action uses the frameworks configured on your ProdCycle workspace.
 
 ## Prerequisites
 
@@ -72,110 +185,11 @@ In your repository, go to **Settings > Secrets and variables > Actions** and add
 
 ### 3. Add the workflow
 
-Create `.github/workflows/compliance.yml` in your repository with the configuration above.
-
-## Inputs
-
-| Input                | Required | Default                     | Description                                                              |
-| -------------------- | -------- | --------------------------- | ------------------------------------------------------------------------ |
-| `api-key`            | Yes      |                             | ProdCycle compliance API key (`pc_...`)                                  |
-| `api-url`            | No       | `https://api.prodcycle.com` | ProdCycle API base URL                                                   |
-| `frameworks`         | No       | Workspace setting           | Comma-separated framework IDs (`soc2,hipaa,nist`)                        |
-| `fail-on`            | No       | `critical,high`             | Comma-separated severities that fail the check                           |
-| `severity-threshold` | No       | `low`                       | Minimum severity to include in results                                   |
-| `include`            | No       | All changed files           | Comma-separated glob patterns to include (`**/*.tf,**/*.yaml`)           |
-| `exclude`            | No       | None                        | Comma-separated glob patterns to exclude (`test/**,docs/**`)             |
-| `scan-mode`          | No       | `auto`                      | `auto` (diff for PRs, full for pushes); `diff` (changed lines only); `full` (entire codebase) |
-| `annotate`           | No       | `true`                      | Create inline PR annotations for findings                                |
-| `comment`            | No       | `true`                      | Post a summary comment on the PR                                         |
-
-## Outputs
-
-| Output           | Description                                       |
-| ---------------- | ------------------------------------------------- |
-| `passed`         | Whether the scan passed (`true`/`false`)          |
-| `findings-count` | Total number of findings                          |
-| `scan-id`        | ProdCycle scan ID for linking to the dashboard    |
-| `summary`        | JSON summary of results by severity and framework |
-
-## Examples
-
-### Scan specific frameworks
-
-```yaml
-- uses: prodcycle/compliance-code-scanner@v1
-  with:
-    api-key: ${{ secrets.PRODCYCLE_API_KEY }}
-    frameworks: soc2,hipaa,nist
-```
-
-### Only fail on critical findings
-
-```yaml
-- uses: prodcycle/compliance-code-scanner@v1
-  with:
-    api-key: ${{ secrets.PRODCYCLE_API_KEY }}
-    fail-on: critical
-```
-
-### Scan only infrastructure files
-
-```yaml
-- uses: prodcycle/compliance-code-scanner@v1
-  with:
-    api-key: ${{ secrets.PRODCYCLE_API_KEY }}
-    include: "**/*.tf,**/*.yaml,**/*.yml,**/Dockerfile"
-    exclude: "test/**,docs/**"
-```
-
-### Use outputs in subsequent steps
-
-```yaml
-- uses: prodcycle/compliance-code-scanner@v1
-  id: compliance
-  with:
-    api-key: ${{ secrets.PRODCYCLE_API_KEY }}
-  continue-on-error: true
-
-- run: |
-    echo "Passed: ${{ steps.compliance.outputs.passed }}"
-    echo "Findings: ${{ steps.compliance.outputs.findings-count }}"
-    echo "Scan: ${{ steps.compliance.outputs.scan-id }}"
-```
-
-### Explicit full codebase scan
-
-If you want to force a comprehensive scan of the entire codebase regardless of the event trigger, you can explicitly set `scan-mode: full`:
-
-```yaml
-- uses: prodcycle/compliance-code-scanner@v1
-  with:
-    api-key: ${{ secrets.PRODCYCLE_API_KEY }}
-    scan-mode: full
-```
-
-### Self-hosted ProdCycle instance
-
-```yaml
-- uses: prodcycle/compliance-code-scanner@v1
-  with:
-    api-key: ${{ secrets.PRODCYCLE_API_KEY }}
-    api-url: https://api.yourcompany.com
-```
-
-## Supported frameworks
-
-| ID     | Framework                              |
-| ------ | -------------------------------------- |
-| `soc2` | SOC 2                                  |
-| `hipaa`| HIPAA                                  |
-| `nist` | NIST 800-53 / Cybersecurity Framework  |
-
-If no `frameworks` input is specified, the action uses the frameworks configured on your ProdCycle workspace.
+Create `.github/workflows/compliance.yml` in your repository with the configuration from the Quick start section above.
 
 ## Permissions
 
-The action requires the following GitHub token permissions:
+The actions require the following GitHub token permissions:
 
 - `contents: read` to checkout and read changed files
 - `pull-requests: write` to post annotations and summary comments
@@ -186,7 +200,7 @@ The action requires the following GitHub token permissions:
 pnpm install
 pnpm run type-check    # TypeScript check
 pnpm run test          # Run tests
-pnpm run build         # Bundle with ncc into dist/
+pnpm run build         # Bundle with ncc into compliance-scanner/dist/
 pnpm run all           # All of the above
 ```
 
@@ -194,10 +208,10 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for more details.
 
 ## Support
 
-- 📖 [ProdCycle Documentation](https://docs.prodcycle.com)
-- 🐛 [Report an issue](https://github.com/prodcycle/compliance-code-scanner/issues)
-- 🔒 [Security policy](SECURITY.md)
-- 💬 [Contact support](mailto:support@prodcycle.com)
+- [ProdCycle Documentation](https://docs.prodcycle.com)
+- [Report an issue](https://github.com/prodcycle/actions/issues)
+- [Security policy](SECURITY.md)
+- [Contact support](mailto:support@prodcycle.com)
 
 ## License
 

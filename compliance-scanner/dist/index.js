@@ -30037,7 +30037,7 @@ async function postSummaryComment(findings, summary, scanId, passed, _apiUrl) {
     const headSha = context.payload.pull_request.head?.sha || "";
     const repoUrl = `https://github.com/${owner}/${repo}`;
     const body = buildCommentBody(findings, summary, scanId, passed, repoUrl, headSha);
-    const marker = "<!-- prodcycle-compliance-code-scanner -->";
+    const marker = "<!-- prodcycle-actions-compliance-scanner -->";
     const fullBody = `${marker}\n${body}`;
     // Look for an existing comment to update
     const { data: comments } = await octokit.rest.issues.listComments({
@@ -30611,7 +30611,7 @@ class ComplianceApiClient {
                         "Content-Type": "application/json",
                         Authorization: `Bearer ${this.apiKey}`,
                         "x-api-version": "v1",
-                        "User-Agent": "prodcycle/compliance-code-scanner",
+                        "User-Agent": "prodcycle/actions/compliance-scanner",
                     },
                     body: JSON.stringify(body),
                     signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
