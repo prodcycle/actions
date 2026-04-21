@@ -3,21 +3,23 @@
 ## Project Overview
 
 This is a monorepo of GitHub Actions (`prodcycle/actions`) for the ProdCycle platform.
-Each action lives in its own subdirectory (e.g. `compliance-scanner/`) with its own
-`action.yml` and compiled `dist/` bundle. The root `action.yml` defaults to the
-compliance scanner.
+Each action lives in its own short-named subdirectory (e.g. `compliance/`) with its
+own `action.yml`, `README.md`, and compiled `dist/` bundle — the same layout
+convention as [`snyk/actions`](https://github.com/snyk/actions). The root
+`action.yml` defaults to the compliance action.
 
 Users reference actions as:
-- `prodcycle/actions@v1` — default (compliance scanner)
-- `prodcycle/actions/compliance-scanner@v1` — explicit
+- `prodcycle/actions/compliance@v2` — explicit (preferred)
+- `prodcycle/actions@v2` — shorthand (resolves to compliance)
 
 ## Architecture
 
 ```
-compliance-scanner/   # Compliance Code Scanner action
-  action.yml          # Action metadata (inputs, outputs, branding)
-  dist/               # Compiled bundle (ncc) — MUST be committed and kept in sync
-action.yml            # Root action — defaults to compliance-scanner
+compliance/           # Compliance Code Scanner action
+  action.yml           # Action metadata (inputs, outputs, branding)
+  README.md            # Per-action usage docs
+  dist/                # Compiled bundle (ncc) — MUST be committed and kept in sync
+action.yml             # Root action — defaults to compliance/
 src/
   index.ts            # Entry point: parses inputs, orchestrates the flow
   diff.ts             # Collects changed files from git diff between base/head
@@ -32,19 +34,19 @@ __tests__/            # Vitest tests mirroring src/ structure
 - `pnpm run test` — run all tests (vitest)
 - `pnpm run type-check` — TypeScript type checking
 - `pnpm run lint` — ESLint
-- `pnpm run build` — compile with ncc into `compliance-scanner/dist/`
+- `pnpm run build` — compile with ncc into `compliance/dist/`
 - `pnpm run all` — type-check + lint + test + build
 
 ## Critical Rules
 
 ### dist/ must always be rebuilt
 
-The `compliance-scanner/dist/` directory is the compiled action bundle and **must
-be committed**. CI enforces this with a `git diff --name-only compliance-scanner/dist/`
+The `compliance/dist/` directory is the compiled action bundle and **must
+be committed**. CI enforces this with a `git diff --name-only compliance/dist/`
 check. After any source change:
 
 1. Run `pnpm run build`
-2. Commit the updated `compliance-scanner/dist/` files alongside source changes
+2. Commit the updated `compliance/dist/` files alongside source changes
 
 ### API payload batching
 
@@ -85,15 +87,16 @@ files (Alembic, Prisma, Django, Flyway, etc.).
 
 This action uses the standard GitHub Actions versioning convention:
 
-- `v1.0.x` — specific patch releases (immutable tags)
-- `v1` — floating major tag, must always point to the latest `v1.x.x` release
+- `v2.0.x` — specific patch releases (immutable tags)
+- `v2` — floating major tag, must always point to the latest `v2.x.x` release
+- `v1` is frozen on the pre-rename codebase (legacy `compliance-scanner/` subdir)
 
 After every release, update both:
 ```bash
-git tag v1.x.x
-git tag -f v1
-git push origin v1.x.x
-git push --force origin v1
+git tag v2.x.x
+git tag -f v2
+git push origin v2.x.x
+git push --force origin v2
 ```
 
 ### Testing

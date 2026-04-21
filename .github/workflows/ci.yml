@@ -29,11 +29,11 @@ jobs:
 
       - run: pnpm run build
 
-      - name: Check compliance-scanner/dist/ is up to date
+      - name: Check compliance/dist/ is up to date
         run: |
-          if [ -n "$(git diff --name-only compliance-scanner/dist/)" ]; then
-            echo "::error::compliance-scanner/dist/ is out of date. Run 'pnpm run build' and commit the changes."
-            git diff --stat compliance-scanner/dist/
+          if [ -n "$(git diff --name-only compliance/dist/)" ]; then
+            echo "::error::compliance/dist/ is out of date. Run 'pnpm run build' and commit the changes."
+            git diff --stat compliance/dist/
             exit 1
           fi
 
@@ -50,7 +50,7 @@ jobs:
           fetch-depth: 0
 
       - name: Run Compliance Scanner
-        uses: ./compliance-scanner
+        uses: ./compliance
         with:
           api-key: ${{ secrets.PRODCYCLE_API_KEY }}
           github-token: ${{ secrets.GITHUB_TOKEN }}

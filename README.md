@@ -8,7 +8,7 @@ A set of GitHub Actions for using [ProdCycle](https://prodcycle.com) in your CI/
 
 | Action | Description |
 | ------ | ----------- |
-| [Compliance Scanner](compliance-scanner/) | Scan PR changes for SOC 2, HIPAA, and NIST compliance violations |
+| [Compliance](compliance/) | Scan PR changes for SOC 2, HIPAA, and NIST compliance violations |
 
 ## Quick start
 
@@ -34,7 +34,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: prodcycle/actions/compliance-scanner@v1
+      - uses: prodcycle/actions/compliance@v2
         with:
           api-key: ${{ secrets.PRODCYCLE_API_KEY }}
 ```
@@ -42,7 +42,7 @@ jobs:
 You can also reference the root action directly, which defaults to the Compliance Scanner:
 
 ```yaml
-- uses: prodcycle/actions@v1
+- uses: prodcycle/actions@v2
   with:
     api-key: ${{ secrets.PRODCYCLE_API_KEY }}
 ```
@@ -96,7 +96,7 @@ When run on a `push` event (e.g., merge to `main`):
 #### Scan specific frameworks
 
 ```yaml
-- uses: prodcycle/actions/compliance-scanner@v1
+- uses: prodcycle/actions/compliance@v2
   with:
     api-key: ${{ secrets.PRODCYCLE_API_KEY }}
     frameworks: soc2,hipaa,nist
@@ -105,7 +105,7 @@ When run on a `push` event (e.g., merge to `main`):
 #### Only fail on critical findings
 
 ```yaml
-- uses: prodcycle/actions/compliance-scanner@v1
+- uses: prodcycle/actions/compliance@v2
   with:
     api-key: ${{ secrets.PRODCYCLE_API_KEY }}
     fail-on: critical
@@ -114,7 +114,7 @@ When run on a `push` event (e.g., merge to `main`):
 #### Scan only infrastructure files
 
 ```yaml
-- uses: prodcycle/actions/compliance-scanner@v1
+- uses: prodcycle/actions/compliance@v2
   with:
     api-key: ${{ secrets.PRODCYCLE_API_KEY }}
     include: "**/*.tf,**/*.yaml,**/*.yml,**/Dockerfile"
@@ -124,7 +124,7 @@ When run on a `push` event (e.g., merge to `main`):
 #### Use outputs in subsequent steps
 
 ```yaml
-- uses: prodcycle/actions/compliance-scanner@v1
+- uses: prodcycle/actions/compliance@v2
   id: compliance
   with:
     api-key: ${{ secrets.PRODCYCLE_API_KEY }}
@@ -139,7 +139,7 @@ When run on a `push` event (e.g., merge to `main`):
 #### Explicit full codebase scan
 
 ```yaml
-- uses: prodcycle/actions/compliance-scanner@v1
+- uses: prodcycle/actions/compliance@v2
   with:
     api-key: ${{ secrets.PRODCYCLE_API_KEY }}
     scan-mode: full
@@ -148,7 +148,7 @@ When run on a `push` event (e.g., merge to `main`):
 #### Self-hosted ProdCycle instance
 
 ```yaml
-- uses: prodcycle/actions/compliance-scanner@v1
+- uses: prodcycle/actions/compliance@v2
   with:
     api-key: ${{ secrets.PRODCYCLE_API_KEY }}
     api-url: https://api.yourcompany.com
@@ -200,7 +200,7 @@ The actions require the following GitHub token permissions:
 pnpm install
 pnpm run type-check    # TypeScript check
 pnpm run test          # Run tests
-pnpm run build         # Bundle with ncc into compliance-scanner/dist/
+pnpm run build         # Bundle with ncc into compliance/dist/
 pnpm run all           # All of the above
 ```
 

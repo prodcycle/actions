@@ -84,7 +84,7 @@ export async function postSummaryComment(
   const headSha = context.payload.pull_request.head?.sha || "";
   const repoUrl = `https://github.com/${owner}/${repo}`;
   const body = buildCommentBody(findings, summary, scanId, passed, repoUrl, headSha);
-  const marker = "<!-- prodcycle-actions-compliance-scanner -->";
+  const marker = "<!-- prodcycle-actions-compliance -->";
   const fullBody = `${marker}\n${body}`;
 
   // Look for an existing comment to update

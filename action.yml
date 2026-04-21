@@ -66,4 +66,4 @@ outputs:
 
 runs:
   using: "node24"
-  main: "compliance-scanner/dist/index.js"
+  main: "compliance/dist/index.js"
