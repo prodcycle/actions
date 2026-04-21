@@ -47,9 +47,24 @@ Managed automatically via `scan-mode: auto` (default):
 | `include`               | No       | All changed files           | Glob patterns to include (`**/*.tf,**/*.yaml`)                                               |
 | `exclude`               | No       | None                        | Glob patterns to exclude (`test/**,docs/**`)                                                 |
 | `scan-mode`             | No       | `auto`                      | `auto` / `diff` (changed lines) / `full` (entire codebase)                                   |
-| `annotate`              | No       | `true`                      | Create inline PR annotations                                                                 |
+| `annotate`              | No       | `true`                      | Create inline workflow annotations (`core.error`/`warning`/`notice`) for findings            |
 | `comment`               | No       | `true`                      | Post a summary comment                                                                       |
+| `review-event`          | No       | *(empty — back-compat)*     | PR review event: `auto` / `comment` / `request-changes` / `none` — see below                 |
 | `exclude-accepted-risk` | No       | `true`                      | Skip findings marked as accepted risk in ProdCycle                                           |
+
+### `review-event` values
+
+Controls the formal PR review that the action submits when findings exist. Independent of `annotate`, which controls only the inline workflow annotations on the diff view.
+
+| Value             | Behavior                                                                                                |
+| ----------------- | ------------------------------------------------------------------------------------------------------- |
+| `auto`            | `COMMENT` if the scan passed, `REQUEST_CHANGES` if it failed (historical behavior of `annotate: true`)  |
+| `comment`         | Always `COMMENT` — inline review comments post but never flip the PR into "Changes requested"           |
+| `request-changes` | Always `REQUEST_CHANGES` — every finding-bearing scan formally requests changes                         |
+| `none`            | Skip the PR review entirely (inline workflow annotations controlled by `annotate` are unaffected)       |
+| *(empty)*         | **Back-compat default:** `auto` when `annotate: true`, `none` when `annotate: false`                    |
+
+Use `review-event: comment` (or `none`) when you want informative findings without blocking merges via the "Changes requested" review state.
 
 ## Outputs
 

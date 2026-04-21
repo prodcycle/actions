@@ -14,6 +14,11 @@ export interface ActionInputs {
   scanMode: "auto" | "diff" | "full";
   annotate: boolean;
   comment: boolean;
+  /**
+   * Resolved PR review behavior. `"none"` skips posting a review.
+   * `"auto"` means: COMMENT when passed, REQUEST_CHANGES when failed.
+   */
+  reviewEvent: "auto" | "comment" | "request-changes" | "none";
   excludeAcceptedRisk: boolean;
 }
 

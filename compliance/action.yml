@@ -34,13 +34,17 @@ inputs:
     required: false
     default: ""
   annotate:
-    description: "Create inline PR annotations for findings"
+    description: "Create inline workflow annotations (core.error/warning/notice) for findings. Does NOT control the formal PR review event — use `review-event` for that."
     required: false
     default: "true"
   comment:
     description: "Post a summary comment on the PR"
     required: false
     default: "true"
+  review-event:
+    description: "PR review event when findings are posted. One of: 'auto' (COMMENT on pass, REQUEST_CHANGES on fail — historical behavior), 'comment' (always COMMENT, never blocks merge), 'request-changes' (always REQUEST_CHANGES), or 'none' (skip the PR review entirely). Empty string resolves to 'auto' when annotate=true, 'none' when annotate=false (back-compat)."
+    required: false
+    default: ""
   scan-mode:
     description: "Scan mode: 'auto' (diff for PRs, full for pushes), 'diff' (only changed lines), 'full' (entire codebase)."
     required: false

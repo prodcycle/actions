@@ -79,8 +79,9 @@ When run on a `push` event (e.g., merge to `main`):
 | `include`            | No       | All changed files           | Comma-separated glob patterns to include (`**/*.tf,**/*.yaml`)           |
 | `exclude`            | No       | None                        | Comma-separated glob patterns to exclude (`test/**,docs/**`)             |
 | `scan-mode`          | No       | `auto`                      | `auto` (diff for PRs, full for pushes); `diff` (changed lines only); `full` (entire codebase) |
-| `annotate`           | No       | `true`                      | Create inline PR annotations for findings                                |
+| `annotate`           | No       | `true`                      | Create inline workflow annotations (`core.error`/`warning`/`notice`) for findings |
 | `comment`            | No       | `true`                      | Post a summary comment on the PR                                         |
+| `review-event`       | No       | *(empty — see below)*        | PR review event: `auto` / `comment` / `request-changes` / `none`          |
 
 ### Outputs
 
@@ -134,6 +135,16 @@ When run on a `push` event (e.g., merge to `main`):
     echo "Passed: ${{ steps.compliance.outputs.passed }}"
     echo "Findings: ${{ steps.compliance.outputs.findings-count }}"
     echo "Scan: ${{ steps.compliance.outputs.scan-id }}"
+```
+
+#### Non-blocking compliance (comments only, never "Changes requested")
+
+```yaml
+- uses: prodcycle/actions/compliance@v2
+  with:
+    api-key: ${{ secrets.PRODCYCLE_API_KEY }}
+    review-event: comment
+  continue-on-error: true
 ```
 
 #### Explicit full codebase scan

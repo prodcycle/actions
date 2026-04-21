@@ -216,7 +216,7 @@ function buildCommentBody(
  */
 export async function postReviewComments(
   findings: ScanFinding[],
-  passed: boolean,
+  reviewEvent: "COMMENT" | "REQUEST_CHANGES",
 ): Promise<void> {
   const token = core.getInput("github-token") || process.env.GITHUB_TOKEN;
   if (!token) {
@@ -354,10 +354,11 @@ export async function postReviewComments(
     return;
   }
 
-  const event = passed ? "COMMENT" : "REQUEST_CHANGES";
-  const reviewBody = passed
-    ? "✅ **ProdCycle Compliance Scan** — findings detected but within acceptable thresholds."
-    : "❌ **ProdCycle Compliance Scan** — compliance violations found that require attention.";
+  const event = reviewEvent;
+  const reviewBody =
+    event === "COMMENT"
+      ? "✅ **ProdCycle Compliance Scan** — findings detected but within acceptable thresholds."
+      : "❌ **ProdCycle Compliance Scan** — compliance violations found that require attention.";
 
   const inlineCount = comments.filter((c) => !c.subject_type).length;
   const fileCount = comments.filter((c) => c.subject_type === "file").length;

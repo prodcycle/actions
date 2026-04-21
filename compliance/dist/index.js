@@ -30144,7 +30144,7 @@ function buildCommentBody(findings, summary, scanId, passed, repoUrl, headSha) {
  * were detected. This creates the same experience as review bots like Greptile —
  * comments appear directly on the diff with the relevant code highlighted.
  */
-async function postReviewComments(findings, passed) {
+async function postReviewComments(findings, reviewEvent) {
     const token = core.getInput("github-token") || process.env.GITHUB_TOKEN;
     if (!token) {
         core.warning("No GitHub token available. Skipping PR review comments.");
@@ -30258,8 +30258,8 @@ async function postReviewComments(findings, passed) {
         core.info(`All ${dedupCount} review comment(s) already exist on this PR. Skipping review.`);
         return;
     }
-    const event = passed ? "COMMENT" : "REQUEST_CHANGES";
-    const reviewBody = passed
+    const event = reviewEvent;
+    const reviewBody = event === "COMMENT"
         ? "✅ **ProdCycle Compliance Scan** — findings detected but within acceptable thresholds."
         : "❌ **ProdCycle Compliance Scan** — compliance violations found that require attention.";
     const inlineCount = comments.filter((c) => !c.subject_type).length;
@@ -31141,6 +31141,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.resolveReviewEvent = resolveReviewEvent;
 const core = __importStar(__nccwpck_require__(6966));
 const github = __importStar(__nccwpck_require__(4903));
 const diff_1 = __nccwpck_require__(2371);
@@ -31155,6 +31156,9 @@ function parseInputs() {
     if (!["auto", "diff", "full"].includes(rawMode)) {
         throw new Error(`Invalid scan-mode "${rawMode}". Must be one of: auto, diff, full.`);
     }
+    const annotate = core.getBooleanInput("annotate");
+    const rawReviewEvent = core.getInput("review-event").trim().toLowerCase();
+    const reviewEvent = resolveReviewEvent(rawReviewEvent, annotate);
     return {
         apiKey,
         apiUrl: core.getInput("api-url") || "https://api.prodcycle.com",
@@ -31164,10 +31168,29 @@ function parseInputs() {
         include: parseCommaSeparated(core.getInput("include")),
         exclude: parseCommaSeparated(core.getInput("exclude")),
         scanMode: rawMode,
-        annotate: core.getBooleanInput("annotate"),
+        annotate,
         comment: core.getBooleanInput("comment"),
+        reviewEvent,
         excludeAcceptedRisk: core.getBooleanInput("exclude-accepted-risk"),
     };
+}
+/**
+ * Resolve the `review-event` input to a concrete value.
+ *
+ * Empty string (the default) preserves back-compat with v2.0.x where
+ * `annotate` alone gated the PR review:
+ *  - `annotate: true`  → "auto"  (COMMENT on pass, REQUEST_CHANGES on fail)
+ *  - `annotate: false` → "none"  (no PR review)
+ */
+function resolveReviewEvent(raw, annotate) {
+    if (raw === "") {
+        return annotate ? "auto" : "none";
+    }
+    const allowed = ["auto", "comment", "request-changes", "none"];
+    if (!allowed.includes(raw)) {
+        throw new Error(`Invalid review-event "${raw}". Must be one of: ${allowed.join(", ")}.`);
+    }
+    return raw;
 }
 function parseCommaSeparated(value) {
     if (!value.trim())
@@ -31259,9 +31282,12 @@ async function run() {
         (0, annotate_1.createAnnotations)(result.findings);
     }
     // ── 6. Post PR review with inline comments ──
-    if (inputs.annotate && context.payload.pull_request && result.findings.length > 0) {
+    if (inputs.reviewEvent !== "none" &&
+        context.payload.pull_request &&
+        result.findings.length > 0) {
         try {
-            await (0, annotate_1.postReviewComments)(result.findings, result.passed);
+            const resolvedEvent = resolveReviewEventForPass(inputs.reviewEvent, result.passed);
+            await (0, annotate_1.postReviewComments)(result.findings, resolvedEvent);
         }
         catch (err) {
             core.warning(`Failed to post PR review comments: ${err instanceof Error ? err.message : String(err)}`);
@@ -31281,6 +31307,20 @@ async function run() {
     // ── 9. Fail the action if scan did not pass ──
     if (!result.passed) {
         core.setFailed(`Compliance check failed: ${result.findingsCount} finding(s) detected. See annotations for details.`);
+    }
+}
+/**
+ * Collapse the user-facing `review-event` value to the concrete GitHub
+ * review event string at the moment we know whether the scan passed.
+ */
+function resolveReviewEventForPass(event, passed) {
+    switch (event) {
+        case "auto":
+            return passed ? "COMMENT" : "REQUEST_CHANGES";
+        case "comment":
+            return "COMMENT";
+        case "request-changes":
+            return "REQUEST_CHANGES";
     }
 }
 run().catch((err) => {

@@ -35,6 +35,10 @@ function parseInputs(): ActionInputs {
     throw new Error(`Invalid scan-mode "${rawMode}". Must be one of: auto, diff, full.`);
   }
 
+  const annotate = core.getBooleanInput("annotate");
+  const rawReviewEvent = core.getInput("review-event").trim().toLowerCase();
+  const reviewEvent = resolveReviewEvent(rawReviewEvent, annotate);
+
   return {
     apiKey,
     apiUrl: core.getInput("api-url") || "https://api.prodcycle.com",
@@ -44,10 +48,35 @@ function parseInputs(): ActionInputs {
     include: parseCommaSeparated(core.getInput("include")),
     exclude: parseCommaSeparated(core.getInput("exclude")),
     scanMode: rawMode as "auto" | "diff" | "full",
-    annotate: core.getBooleanInput("annotate"),
+    annotate,
     comment: core.getBooleanInput("comment"),
+    reviewEvent,
     excludeAcceptedRisk: core.getBooleanInput("exclude-accepted-risk"),
   };
+}
+
+/**
+ * Resolve the `review-event` input to a concrete value.
+ *
+ * Empty string (the default) preserves back-compat with v2.0.x where
+ * `annotate` alone gated the PR review:
+ *  - `annotate: true`  → "auto"  (COMMENT on pass, REQUEST_CHANGES on fail)
+ *  - `annotate: false` → "none"  (no PR review)
+ */
+export function resolveReviewEvent(
+  raw: string,
+  annotate: boolean,
+): ActionInputs["reviewEvent"] {
+  if (raw === "") {
+    return annotate ? "auto" : "none";
+  }
+  const allowed = ["auto", "comment", "request-changes", "none"] as const;
+  if (!(allowed as readonly string[]).includes(raw)) {
+    throw new Error(
+      `Invalid review-event "${raw}". Must be one of: ${allowed.join(", ")}.`,
+    );
+  }
+  return raw as ActionInputs["reviewEvent"];
 }
 
 function parseCommaSeparated(value: string): string[] {
@@ -171,9 +200,17 @@ async function run(): Promise<void> {
 
   // ── 6. Post PR review with inline comments ──
 
-  if (inputs.annotate && context.payload.pull_request && result.findings.length > 0) {
+  if (
+    inputs.reviewEvent !== "none" &&
+    context.payload.pull_request &&
+    result.findings.length > 0
+  ) {
     try {
-      await postReviewComments(result.findings, result.passed);
+      const resolvedEvent = resolveReviewEventForPass(
+        inputs.reviewEvent,
+        result.passed,
+      );
+      await postReviewComments(result.findings, resolvedEvent);
     } catch (err) {
       core.warning(
         `Failed to post PR review comments: ${err instanceof Error ? err.message : String(err)}`,
@@ -209,6 +246,24 @@ async function run(): Promise<void> {
     core.setFailed(
       `Compliance check failed: ${result.findingsCount} finding(s) detected. See annotations for details.`,
     );
+  }
+}
+
+/**
+ * Collapse the user-facing `review-event` value to the concrete GitHub
+ * review event string at the moment we know whether the scan passed.
+ */
+function resolveReviewEventForPass(
+  event: Exclude<ActionInputs["reviewEvent"], "none">,
+  passed: boolean,
+): "COMMENT" | "REQUEST_CHANGES" {
+  switch (event) {
+    case "auto":
+      return passed ? "COMMENT" : "REQUEST_CHANGES";
+    case "comment":
+      return "COMMENT";
+    case "request-changes":
+      return "REQUEST_CHANGES";
   }
 }
 

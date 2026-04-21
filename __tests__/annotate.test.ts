@@ -185,7 +185,7 @@ describe("annotate", () => {
       ];
 
       mockCreateReview.mockResolvedValue({ data: {} });
-      await postReviewComments(findings, false);
+      await postReviewComments(findings, "REQUEST_CHANGES");
 
       // Called twice: once for listReviewComments (dedup), once for listFiles (diff ranges)
       expect(mockPaginate).toHaveBeenCalledTimes(2);
@@ -214,7 +214,7 @@ describe("annotate", () => {
       const { postReviewComments } = await import("../src/annotate");
 
       mockCreateReview.mockResolvedValue({ data: {} });
-      await postReviewComments([makeFinding()], true);
+      await postReviewComments([makeFinding()], "COMMENT");
 
       expect(mockCreateReview.mock.calls[0][0].event).toBe("COMMENT");
     });
@@ -224,7 +224,7 @@ describe("annotate", () => {
 
       const findings = [makeFinding({ startLine: 0, endLine: 0 })];
       mockCreateReview.mockResolvedValue({ data: {} });
-      await postReviewComments(findings, false);
+      await postReviewComments(findings, "REQUEST_CHANGES");
 
       expect(mockCreateReview).not.toHaveBeenCalled();
     });
@@ -234,7 +234,7 @@ describe("annotate", () => {
 
       const findings = [makeFinding({ startLine: 5, endLine: 0 })];
       mockCreateReview.mockResolvedValue({ data: {} });
-      await postReviewComments(findings, false);
+      await postReviewComments(findings, "REQUEST_CHANGES");
 
       expect(mockCreateReview).not.toHaveBeenCalled();
     });
@@ -245,7 +245,7 @@ describe("annotate", () => {
       vi.mocked(core.getInput).mockReturnValue("");
       delete process.env.GITHUB_TOKEN;
 
-      await postReviewComments([makeFinding()], false);
+      await postReviewComments([makeFinding()], "REQUEST_CHANGES");
       expect(mockCreateReview).not.toHaveBeenCalled();
     });
 
@@ -254,7 +254,7 @@ describe("annotate", () => {
 
       mockCreateReview.mockRejectedValue(new Error("Validation Failed"));
       mockCreateReviewComment.mockRejectedValue(new Error("Line could not be resolved"));
-      await postReviewComments([makeFinding()], false);
+      await postReviewComments([makeFinding()], "REQUEST_CHANGES");
 
       expect(core.warning).toHaveBeenCalledWith(
         expect.stringContaining("Batch review failed"),
@@ -265,7 +265,7 @@ describe("annotate", () => {
       const { postReviewComments } = await import("../src/annotate");
 
       mockCreateReview.mockResolvedValue({ data: {} });
-      await postReviewComments([makeFinding({ severity: "critical" })], false);
+      await postReviewComments([makeFinding({ severity: "critical" })], "REQUEST_CHANGES");
 
       const body = mockCreateReview.mock.calls[0][0].comments[0].body;
       expect(body).toContain("🔴");
@@ -280,7 +280,7 @@ describe("annotate", () => {
       // Finding on line 100 — well outside the diff range (5-29)
       const findings = [makeFinding({ startLine: 100, endLine: 105 })];
       mockCreateReview.mockResolvedValue({ data: {} });
-      await postReviewComments(findings, false);
+      await postReviewComments(findings, "REQUEST_CHANGES");
 
       expect(mockCreateReview).toHaveBeenCalledOnce();
       const call = mockCreateReview.mock.calls[0][0];
@@ -313,7 +313,7 @@ describe("annotate", () => {
         .mockResolvedValueOnce({ data: {} })
         .mockRejectedValueOnce(new Error("Line could not be resolved"));
 
-      await postReviewComments(findings, false);
+      await postReviewComments(findings, "REQUEST_CHANGES");
 
       expect(mockCreateReview).toHaveBeenCalledOnce();
       expect(mockCreateReviewComment).toHaveBeenCalledTimes(2);
@@ -327,7 +327,7 @@ describe("annotate", () => {
 
       const findings = [makeFinding({ resourcePath: "src/unknown.ts", startLine: 5, endLine: 10 })];
       mockCreateReview.mockResolvedValue({ data: {} });
-      await postReviewComments(findings, false);
+      await postReviewComments(findings, "REQUEST_CHANGES");
 
       expect(mockCreateReview).toHaveBeenCalledOnce();
       const call = mockCreateReview.mock.calls[0][0];
@@ -354,7 +354,7 @@ describe("annotate", () => {
 
       const findings = [makeFinding({ startLine: 10, endLine: 15 })];
       mockCreateReview.mockResolvedValue({ data: {} });
-      await postReviewComments(findings, false);
+      await postReviewComments(findings, "REQUEST_CHANGES");
 
       // All comments deduplicated — review should not be posted
       expect(mockCreateReview).not.toHaveBeenCalled();
@@ -382,7 +382,7 @@ describe("annotate", () => {
 
       const findings = [makeFinding({ startLine: 100, endLine: 105 })];
       mockCreateReview.mockResolvedValue({ data: {} });
-      await postReviewComments(findings, false);
+      await postReviewComments(findings, "REQUEST_CHANGES");
 
       expect(mockCreateReview).not.toHaveBeenCalled();
       expect(core.info).toHaveBeenCalledWith(
@@ -420,7 +420,7 @@ describe("annotate", () => {
       ];
 
       mockCreateReview.mockResolvedValue({ data: {} });
-      await postReviewComments(findings, false);
+      await postReviewComments(findings, "REQUEST_CHANGES");
 
       expect(mockCreateReview).toHaveBeenCalledOnce();
       const call = mockCreateReview.mock.calls[0][0];
