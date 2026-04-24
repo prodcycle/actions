@@ -73,7 +73,7 @@ When run on a `push` event (e.g., merge to `main`):
 | -------------------- | -------- | --------------------------- | ------------------------------------------------------------------------ |
 | `api-key`            | Yes      |                             | ProdCycle compliance API key (`pc_...`)                                  |
 | `api-url`            | No       | `https://api.prodcycle.com` | ProdCycle API base URL                                                   |
-| `frameworks`         | No       | Workspace setting           | Comma-separated framework IDs (`soc2,hipaa,nist`)                        |
+| `frameworks`         | No       | Workspace setting           | Comma-separated framework IDs (`soc2,hipaa,nist-csf`)                    |
 | `fail-on`            | No       | `critical,high`             | Comma-separated severities that fail the check                           |
 | `severity-threshold` | No       | `low`                       | Minimum severity to include in results                                   |
 | `include`            | No       | All changed files           | Comma-separated glob patterns to include (`**/*.tf,**/*.yaml`)           |
@@ -100,7 +100,7 @@ When run on a `push` event (e.g., merge to `main`):
 - uses: prodcycle/actions/compliance@v2
   with:
     api-key: ${{ secrets.PRODCYCLE_API_KEY }}
-    frameworks: soc2,hipaa,nist
+    frameworks: soc2,hipaa,nist-csf
 ```
 
 #### Only fail on critical findings
@@ -171,7 +171,7 @@ When run on a `push` event (e.g., merge to `main`):
 | ------ | -------------------------------------- |
 | `soc2` | SOC 2                                  |
 | `hipaa`| HIPAA                                  |
-| `nist` | NIST 800-53 / Cybersecurity Framework  |
+| `nist-csf` | NIST Cybersecurity Framework 2.0   |
 
 If no `frameworks` input is specified, the action uses the frameworks configured on your ProdCycle workspace.
 

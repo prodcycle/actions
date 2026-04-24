@@ -41,7 +41,7 @@ Managed automatically via `scan-mode: auto` (default):
 | ----------------------- | -------- | --------------------------- | -------------------------------------------------------------------------------------------- |
 | `api-key`               | Yes      |                             | ProdCycle API key (`pc_...`)                                                                 |
 | `api-url`               | No       | `https://api.prodcycle.com` | ProdCycle API base URL                                                                       |
-| `frameworks`            | No       | Workspace setting           | Comma-separated framework IDs (`soc2,hipaa,nist`)                                            |
+| `frameworks`            | No       | Workspace setting           | Comma-separated framework IDs (`soc2,hipaa,nist-csf`)                                        |
 | `fail-on`               | No       | `critical,high`             | Severities that fail the check                                                               |
 | `severity-threshold`    | No       | `low`                       | Minimum severity to include in results                                                       |
 | `include`               | No       | All changed files           | Glob patterns to include (`**/*.tf,**/*.yaml`)                                               |
