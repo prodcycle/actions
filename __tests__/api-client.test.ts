@@ -254,6 +254,48 @@ describe("ComplianceApiClient", () => {
     ).rejects.toThrow("API error 403: Invalid API key");
   });
 
+  it("includes an actionable hint on 401", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce({
+      ok: false,
+      status: 401,
+      statusText: "Unauthorized",
+      text: async () => "",
+    } as Response);
+
+    const client = new ComplianceApiClient(mockApiUrl, mockApiKey);
+    await expect(
+      client.validate([{ path: "main.tf", content: "" }]),
+    ).rejects.toThrow(/PRODCYCLE_API_KEY/);
+  });
+
+  it("includes an actionable hint on 403", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce({
+      ok: false,
+      status: 403,
+      statusText: "Forbidden",
+      text: async () => "",
+    } as Response);
+
+    const client = new ComplianceApiClient(mockApiUrl, mockApiKey);
+    await expect(
+      client.validate([{ path: "main.tf", content: "" }]),
+    ).rejects.toThrow(/PRODCYCLE_API_KEY/);
+  });
+
+  it("does not include the auth hint on non-auth 4xx errors", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce({
+      ok: false,
+      status: 400,
+      statusText: "Bad Request",
+      text: async () => JSON.stringify({ error: { message: "Bad input" } }),
+    } as Response);
+
+    const client = new ComplianceApiClient(mockApiUrl, mockApiKey);
+    await expect(
+      client.validate([{ path: "main.tf", content: "" }]),
+    ).rejects.toThrow(/^API error 400: Bad input$/);
+  });
+
   it("re-splits and retries on 413 Payload Too Large", async () => {
     const makeSuccessResponse = (scanId: string) => ({
       ok: true,
