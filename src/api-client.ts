@@ -244,13 +244,9 @@ export class ComplianceApiClient {
             continue;
           }
           if (response.status >= 400 && response.status < 500) {
-            throw new Error(
-              `API error ${response.status}: ${tryParseError(text) || text || response.statusText}`,
-            );
+            throw new Error(formatApiError(response.status, text, response.statusText));
           }
-          lastError = new Error(
-            `API error ${response.status}: ${tryParseError(text) || response.statusText}`,
-          );
+          lastError = new Error(formatApiError(response.status, text, response.statusText));
           nextDelayMs = RETRY_DELAY_MS * (attempt + 1);
           continue;
         }
@@ -444,14 +440,10 @@ export class ComplianceApiClient {
             response.status < 500 &&
             response.status !== 429
           ) {
-            throw new Error(
-              `API error ${response.status}: ${error || text || response.statusText}`,
-            );
+            throw new Error(formatApiError(response.status, text, response.statusText));
           }
 
-          lastError = new Error(
-            `API error ${response.status}: ${error || text || response.statusText}`,
-          );
+          lastError = new Error(formatApiError(response.status, text, response.statusText));
           // 5xx (non-503) hits this path too — fall back to linear if
           // the 429/503 branch above didn't already set a delay.
           if (nextDelayMs === 0) {
@@ -656,6 +648,28 @@ function tryParseError(text: string): string | undefined {
   } catch {
     return undefined;
   }
+}
+
+/**
+ * Build an error message for a non-2xx response. For 401/403 (the most
+ * common first-time-user failure mode — wrong/missing/expired API key)
+ * include an actionable hint pointing at the secret name and where to
+ * check it. Other statuses get a plain `API error <code>: <body>`.
+ */
+function formatApiError(
+  status: number,
+  text: string,
+  statusText: string,
+): string {
+  const parsed = tryParseError(text) || text || statusText;
+  if (status === 401 || status === 403) {
+    return (
+      `API error ${status}: ${parsed} — check that the PRODCYCLE_API_KEY ` +
+      `secret is set on this repo, starts with "pc_", and matches the ` +
+      `workspace at https://app.prodcycle.com.`
+    );
+  }
+  return `API error ${status}: ${parsed}`;
 }
 
 /**
