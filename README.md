@@ -82,6 +82,7 @@ When run on a `push` event (e.g., merge to `main`):
 | `annotate`           | No       | `true`                      | Create inline workflow annotations (`core.error`/`warning`/`notice`) for findings |
 | `comment`            | No       | `true`                      | Post a summary comment on the PR                                         |
 | `review-event`       | No       | *(empty — see below)*        | PR review event: `auto` / `comment` / `request-changes` / `none`          |
+| `exclude-accepted-risk` | No   | `true`                      | Skip findings that have been marked as accepted risk in the ProdCycle platform. |
 
 ### Outputs
 
