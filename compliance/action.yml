@@ -14,7 +14,7 @@ inputs:
     required: false
     default: "https://api.prodcycle.com"
   frameworks:
-    description: "Comma-separated framework IDs to evaluate (soc2, hipaa, nist). Defaults to workspace setting."
+    description: "Comma-separated framework IDs to evaluate (soc2, hipaa, nist-csf). Defaults to workspace setting."
     required: false
     default: ""
   fail-on:
