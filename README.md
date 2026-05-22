@@ -82,7 +82,10 @@ When run on a `push` event (e.g., merge to `main`):
 | `annotate`           | No       | `true`                      | Create inline workflow annotations (`core.error`/`warning`/`notice`) for findings |
 | `comment`            | No       | `true`                      | Post a summary comment on the PR                                         |
 | `review-event`       | No       | *(empty — see below)*        | PR review event: `auto` / `comment` / `request-changes` / `none`          |
-| `exclude-accepted-risk` | No   | `true`                      | Skip findings that have been marked as accepted risk in the ProdCycle platform. |
+| `exclude-accepted-risk` | No   | `true`                      | Skip findings marked accepted-risk in ProdCycle. Requires `product-id` or `sync-config-id`. |
+| `exclude-resolved`   | No       | `false`                     | Also skip findings marked resolved in ProdCycle (opt-in). Requires `product-id` or `sync-config-id`. |
+| `product-id`         | No       |                             | ProdCycle product UUID this repo maps to. Enables accepted-risk / resolved suppression. |
+| `sync-config-id`     | No       |                             | ProdCycle sync-config UUID linking this repo to a product. Alternative to `product-id`. |
 | `comment-identity`   | No       | `auto`                      | Who authors PR comments: `auto` (prodcycle[bot] when the App is installed, else github-actions[bot]), `app` (require the App), `github-token`. |
 
 ### Outputs
@@ -105,6 +108,23 @@ The scanner leaves three kinds of feedback, all branded as **ProdCycle Complianc
 **Posting as `prodcycle[bot]`.** With `comment-identity: auto` (the default), the action asks the ProdCycle backend (`POST /v1/compliance/actions/github/installation-token`, authed with your `pc_` key) for a short-lived token from the [ProdCycle GitHub App](https://github.com/apps/prodcycle) so comments are authored by **`prodcycle[bot]`** with the ProdCycle name and avatar. This requires the ProdCycle GitHub App to be installed on the repository. If it isn't (or the backend is unreachable), the action transparently falls back to the built-in `GITHUB_TOKEN` and posts as `github-actions[bot]` — the comment content is identical, only the author differs. Set `comment-identity: github-token` to always use `github-actions[bot]`, or `app` to require the App identity.
 
 **Auto-resolving fixed findings.** When a contributor pushes a fix and the finding disappears from the next scan, the action posts a brief "✅ Resolved by ProdCycle" reply and **marks that review thread resolved**. Only threads ProdCycle authored are ever touched — human and other-bot threads are left alone. This needs `pull-requests: write` on the token (already in the Quick start workflow).
+
+### Respecting accepted-risk and resolved findings
+
+When you mark a finding **Accept Risk** (or **Resolved**) in the ProdCycle dashboard, you usually don't want CI to keep failing on it. To honor those decisions, tell the action which ProdCycle **product** this repo maps to via `product-id` or `sync-config-id`:
+
+```yaml
+- uses: prodcycle/actions/compliance@v2
+  with:
+    api-key: ${{ secrets.PRODCYCLE_API_KEY }}
+    product-id: 123e4567-e89b-12d3-a456-426614174000
+    exclude-resolved: true   # also suppress findings you've marked Resolved
+```
+
+- **Accepted-risk** findings are excluded by default (`exclude-accepted-risk: true`) — but **only when a product is identified**. Without `product-id`/`sync-config-id` there's no product to look up the decisions against, so nothing is suppressed.
+- **Resolved** findings are excluded only when you opt in with `exclude-resolved: true`.
+- Matching is by a line-stable fingerprint, so an accepted/resolved finding stays suppressed even after surrounding code moves.
+- On pull-request (diff) scans the action never alters your product's stored findings — it only *reads* your accept/resolve decisions to filter the PR results. Reconciliation (marking findings resolved when they disappear) happens only on full-repo scans.
 
 ### Examples
 

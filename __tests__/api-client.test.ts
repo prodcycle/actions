@@ -239,6 +239,73 @@ describe("ComplianceApiClient", () => {
     expect(body.options.exclude_accepted_risk).toBe(false);
   });
 
+  it("forwards product/sync identifiers and resolved/reconcile options", async () => {
+    const mockResponse = {
+      status: "success",
+      statusCode: 200,
+      data: {
+        passed: true,
+        findingsCount: 0,
+        findings: [],
+        summary: { total: 0, passed: 0, failed: 0, bySeverity: {}, byFramework: {} },
+        scanId: "scan-suppress",
+      },
+    };
+
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce({
+      ok: true,
+      json: async () => mockResponse,
+    } as Response);
+
+    const client = new ComplianceApiClient(mockApiUrl, mockApiKey);
+    await client.validate(
+      [{ path: "main.tf", content: "" }],
+      {
+        productId: "prod-uuid",
+        syncConfigId: "sync-uuid",
+        excludeAcceptedRisk: true,
+        excludeResolved: true,
+        reconcile: false,
+      },
+    );
+
+    const body = JSON.parse(
+      (fetchSpy.mock.calls[0][1] as RequestInit).body as string,
+    );
+    expect(body.product_id).toBe("prod-uuid");
+    expect(body.sync_config_id).toBe("sync-uuid");
+    expect(body.options.exclude_resolved).toBe(true);
+    expect(body.options.reconcile).toBe(false);
+  });
+
+  it("omits product identifiers when not provided (back-compat)", async () => {
+    const mockResponse = {
+      status: "success",
+      statusCode: 200,
+      data: {
+        passed: true,
+        findingsCount: 0,
+        findings: [],
+        summary: { total: 0, passed: 0, failed: 0, bySeverity: {}, byFramework: {} },
+        scanId: "scan-noprod",
+      },
+    };
+
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce({
+      ok: true,
+      json: async () => mockResponse,
+    } as Response);
+
+    const client = new ComplianceApiClient(mockApiUrl, mockApiKey);
+    await client.validate([{ path: "main.tf", content: "" }], { excludeAcceptedRisk: true });
+
+    const body = JSON.parse(
+      (fetchSpy.mock.calls[0][1] as RequestInit).body as string,
+    );
+    expect(body.product_id).toBeUndefined();
+    expect(body.sync_config_id).toBeUndefined();
+  });
+
   it("throws on 4xx client errors without retrying", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce({
       ok: false,

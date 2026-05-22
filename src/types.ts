@@ -28,6 +28,19 @@ export interface ActionInputs {
    * - `github-token`: always github-actions[bot].
    */
   commentIdentity: "auto" | "app" | "github-token";
+  /**
+   * ProdCycle product the repo maps to. When set, the scan respects findings
+   * accepted-as-risk (and, with excludeResolved, resolved) for that product.
+   * Either productId or syncConfigId identifies the product server-side.
+   */
+  productId?: string;
+  syncConfigId?: string;
+  /**
+   * Also suppress findings marked RESOLVED in ProdCycle (opt-in). Requires a
+   * product to be identified (productId/syncConfigId). Accepted-risk is always
+   * respected; this extends suppression to manually-resolved findings.
+   */
+  excludeResolved: boolean;
 }
 
 /** A single changed file with its content */
@@ -47,11 +60,21 @@ export interface ValidateRequest {
   frameworks?: string[];
   /** GitHub username of the user who opened the PR */
   actor?: string;
+  /** ProdCycle product association (drives accepted-risk/resolved filtering) */
+  product_id?: string;
+  sync_config_id?: string;
   options?: {
     severity_threshold?: string;
     fail_on?: string[];
     include_prompt?: boolean;
     exclude_accepted_risk?: boolean;
+    exclude_resolved?: boolean;
+    /**
+     * Whether the server should reconcile this scan against the product's prior
+     * scan. The action sends `false` for partial (diff) scans so unchanged-file
+     * findings aren't wrongly marked resolved; `true` for full-repo scans.
+     */
+    reconcile?: boolean;
   };
 }
 

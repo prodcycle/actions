@@ -30969,12 +30969,24 @@ class ComplianceApiClient {
         if (options?.actor) {
             body.actor = options.actor;
         }
-        if (options?.severityThreshold || options?.failOn || options?.excludeAcceptedRisk !== undefined) {
+        if (options?.productId) {
+            body.product_id = options.productId;
+        }
+        if (options?.syncConfigId) {
+            body.sync_config_id = options.syncConfigId;
+        }
+        if (options?.severityThreshold ||
+            options?.failOn ||
+            options?.excludeAcceptedRisk !== undefined ||
+            options?.excludeResolved !== undefined ||
+            options?.reconcile !== undefined) {
             body.options = {
                 severity_threshold: options.severityThreshold,
                 fail_on: options.failOn,
                 include_prompt: true,
                 exclude_accepted_risk: options.excludeAcceptedRisk,
+                exclude_resolved: options.excludeResolved,
+                reconcile: options.reconcile,
             };
         }
         const url = `${this.apiUrl.replace(/\/+$/, "")}/v1/compliance/validate`;
@@ -31844,6 +31856,9 @@ function parseInputs() {
         reviewEvent,
         excludeAcceptedRisk: core.getBooleanInput("exclude-accepted-risk"),
         commentIdentity: rawIdentity,
+        productId: core.getInput("product-id").trim() || undefined,
+        syncConfigId: core.getInput("sync-config-id").trim() || undefined,
+        excludeResolved: core.getBooleanInput("exclude-resolved"),
     };
 }
 /**
@@ -31888,10 +31903,15 @@ async function run() {
     const context = github.context;
     const repoRoot = process.env.GITHUB_WORKSPACE || process.cwd();
     let files;
+    // Whether this scan covers the entire repo. Drives `reconcile`: only a full
+    // scan may reconcile against the product (mark absent findings resolved); a
+    // partial diff scan must not, or it would resolve findings in unchanged files.
+    let isFullScan = false;
     if (inputs.scanMode === "full") {
         // Full codebase scan — scan every file in the repo
         core.info("Running full codebase scan...");
         files = await (0, diff_1.collectAllFiles)(repoRoot, inputs.include, inputs.exclude);
+        isFullScan = true;
     }
     else if (inputs.scanMode === "auto") {
         // Auto mode — diff scan for PRs, full scan for pushes
@@ -31902,6 +31922,7 @@ async function run() {
         else {
             core.info("Auto mode: No PR detected, running full codebase scan...");
             files = await (0, diff_1.collectAllFiles)(repoRoot, inputs.include, inputs.exclude);
+            isFullScan = true;
         }
     }
     else {
@@ -31909,6 +31930,7 @@ async function run() {
         if (!context.payload.pull_request) {
             core.info("Not a pull request event. Falling back to full codebase scan.");
             files = await (0, diff_1.collectAllFiles)(repoRoot, inputs.include, inputs.exclude);
+            isFullScan = true;
         }
         else {
             files = await runDiffScan(context, repoRoot, inputs);
@@ -31935,7 +31957,13 @@ async function run() {
         severityThreshold: inputs.severityThreshold,
         failOn: inputs.failOn.length > 0 ? inputs.failOn : undefined,
         excludeAcceptedRisk: inputs.excludeAcceptedRisk,
+        excludeResolved: inputs.excludeResolved,
         actor: prAuthor,
+        productId: inputs.productId,
+        syncConfigId: inputs.syncConfigId,
+        // Only a full-repo scan may reconcile against the product. Diff scans use
+        // the product solely to read accepted-risk/resolved suppressions.
+        reconcile: isFullScan,
     });
     // In diff mode, filter out findings on lines outside the PR diff.
     // The API scans full file contents for context but we only surface

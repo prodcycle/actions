@@ -69,7 +69,11 @@ export class ComplianceApiClient {
       severityThreshold?: string;
       failOn?: string[];
       excludeAcceptedRisk?: boolean;
+      excludeResolved?: boolean;
       actor?: string;
+      productId?: string;
+      syncConfigId?: string;
+      reconcile?: boolean;
     },
   ): Promise<ValidateResponse> {
     const batches = createBatches(files);
@@ -130,7 +134,11 @@ export class ComplianceApiClient {
       severityThreshold?: string;
       failOn?: string[];
       excludeAcceptedRisk?: boolean;
+      excludeResolved?: boolean;
       actor?: string;
+      productId?: string;
+      syncConfigId?: string;
+      reconcile?: boolean;
     },
   ): Promise<ValidateResponse> {
     const session = await this.postRaw<{ scanId: string }>(
@@ -362,7 +370,11 @@ export class ComplianceApiClient {
       severityThreshold?: string;
       failOn?: string[];
       excludeAcceptedRisk?: boolean;
+      excludeResolved?: boolean;
       actor?: string;
+      productId?: string;
+      syncConfigId?: string;
+      reconcile?: boolean;
     },
   ): Promise<ValidateResponse> {
     // Use a queue so batches can be split further on 413
@@ -408,7 +420,11 @@ export class ComplianceApiClient {
       severityThreshold?: string;
       failOn?: string[];
       excludeAcceptedRisk?: boolean;
+      excludeResolved?: boolean;
       actor?: string;
+      productId?: string;
+      syncConfigId?: string;
+      reconcile?: boolean;
     },
   ): Promise<ValidateResponse> {
     const filesMap: Record<string, string> = {};
@@ -441,12 +457,27 @@ export class ComplianceApiClient {
       body.actor = options.actor;
     }
 
-    if (options?.severityThreshold || options?.failOn || options?.excludeAcceptedRisk !== undefined) {
+    if (options?.productId) {
+      body.product_id = options.productId;
+    }
+    if (options?.syncConfigId) {
+      body.sync_config_id = options.syncConfigId;
+    }
+
+    if (
+      options?.severityThreshold ||
+      options?.failOn ||
+      options?.excludeAcceptedRisk !== undefined ||
+      options?.excludeResolved !== undefined ||
+      options?.reconcile !== undefined
+    ) {
       body.options = {
         severity_threshold: options.severityThreshold,
         fail_on: options.failOn,
         include_prompt: true,
         exclude_accepted_risk: options.excludeAcceptedRisk,
+        exclude_resolved: options.excludeResolved,
+        reconcile: options.reconcile,
       };
     }
 
