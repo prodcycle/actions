@@ -57,31 +57,39 @@ All the pieces already exist in `prodcycle/api`:
 - **Route home:** alongside the other GitHub routes in
   `api/src/api/routes/integration.routes.ts`.
 
-Sketch:
+Sketch (as implemented):
 
 ```ts
-integrationRouter.post(
-  "/github/installation-token",
-  complianceAuthMiddleware,
-  apiRateLimit,
-  async (req, res, next) => {
-    const orgId = (req as any).complianceApiKey?.organizationId;
-    if (!orgId) return next(new UnauthorizedError("API key required"));
-    // Optional hardening: verify { owner, repo } is in this workspace's
-    // sync_configurations before handing back a token.
-    const token = await githubOAuthService.getInstallationAccessToken(orgId);
-    return ResponseBuilder.success(res, { token });
-  },
-);
+async getGithubInstallationToken(req, res) {
+  const { owner, repo } = parseBody(req.body, { owner: required, repo: required });
+  const ctx = extractTenantContext(req);
+
+  // 1. API-key only. complianceAuthMiddleware also accepts JWTs (org/workspace
+  //    come from caller headers there) — a JWT user could mint a token for an
+  //    arbitrary org. Require the pc_ key, which binds org + workspace.
+  if (!req.complianceApiKey) throw new ForbiddenError("API key required");
+
+  // 2. The repo must be connected to THIS workspace, so a workspace can't get a
+  //    token for another workspace's repo in the same org-wide installation.
+  const connected = await syncConfigurationService.isGithubRepoConnectedToWorkspace(
+    ctx.organizationId, ctx.workspaceId, `${owner}/${repo}`,
+  );
+  if (!connected) throw new ForbiddenError(`${owner}/${repo} not connected to this workspace`);
+
+  const token = await githubOAuthService.getInstallationAccessToken(ctx.organizationId);
+  logger.info("github_installation_token_minted", { org: ctx.organizationId, repo: `${owner}/${repo}` });
+  return ResponseBuilder.success(res, { token });
+}
 ```
 
-### Recommended hardening
+### Security properties
 
-- Validate the requested `{ owner, repo }` is connected to the caller's
-  workspace (look it up in `sync_configurations`) before returning a token, so
-  a key for workspace A can't obtain a token for an unrelated repo.
-- Installation tokens are org/installation-scoped, not single-repo. If tighter
-  scoping is desired, pass `repositories` / `repository_ids` when calling
-  `POST /app/installations/:id/access_tokens`.
-- Ensure the App's permissions include `pull_requests: write` so the action can
+- **API-key only.** JWT auth is rejected, closing header-spoofed cross-org minting.
+- **Repo must be connected to the caller's workspace** (`sync_configurations`),
+  so a key for workspace A can't obtain a token for an unrelated repo.
+- **Audited.** Every mint logs org / workspace / apiKeyId / repo.
+- Installation tokens are org/installation-scoped, not single-repo. For tighter
+  scoping, pass `repositories` / `repository_ids` to
+  `POST /app/installations/:id/access_tokens` (future hardening).
+- The App's permissions must include `pull_requests: write` so the action can
   post reviews and resolve threads.

@@ -30297,7 +30297,7 @@ async function postReviewComments(findings, reviewEvent, options = {}) {
     const reviewSummary = event === "COMMENT"
         ? "🛡️ **ProdCycle Compliance** — findings detected but within acceptable thresholds."
         : "🛡️ **ProdCycle Compliance** — compliance violations found that require attention.";
-    const reviewBody = `${reviewSummary}\n\n---\n${brandFooter(options.identity, "")}`;
+    const reviewBody = `${reviewSummary}\n\n---\n${brandFooter(options.identity, options.scanId ?? "")}`;
     const inlineCount = comments.filter((c) => !c.subject_type).length;
     const fileCount = comments.filter((c) => c.subject_type === "file").length;
     core.info(`Posting review: ${inlineCount} inline comment(s), ${fileCount} file-level comment(s).`);
@@ -30518,6 +30518,10 @@ async function resolveFixedReviewThreads(findings, options = {}) {
     let resolved = 0;
     for (const t of stale) {
         try {
+            // Resolve FIRST, then reply. If we replied first and the resolve call
+            // then failed transiently, the thread would stay open and re-enter this
+            // loop on every push — appending a duplicate "Resolved" reply each time.
+            await resolveReviewThread(octokit, t.id);
             if (t.firstCommentId) {
                 await octokit.rest.pulls.createReplyForReviewComment({
                     owner,
@@ -30527,7 +30531,6 @@ async function resolveFixedReviewThreads(findings, options = {}) {
                     body: `✅ Resolved by ProdCycle — \`${t.ruleId}\` is no longer detected${shortSha}.`,
                 });
             }
-            await resolveReviewThread(octokit, t.id);
             resolved++;
         }
         catch (err) {
@@ -31986,17 +31989,20 @@ async function run() {
     // Resolved once and reused for review comments, the summary comment, and
     // thread resolution — only when there's PR work that needs a token.
     const isPullRequest = Boolean(context.payload.pull_request);
-    const willReview = inputs.reviewEvent !== "none" && isPullRequest;
-    const auth = isPullRequest && (willReview || inputs.comment)
+    // Concrete review intent: null when reviews are disabled or this isn't a PR.
+    // Narrowing through this const (rather than a boolean) lets TS know the value
+    // is not "none" inside the guarded block below.
+    const reviewEvent = isPullRequest && inputs.reviewEvent !== "none" ? inputs.reviewEvent : null;
+    const auth = isPullRequest && (reviewEvent !== null || inputs.comment)
         ? await (0, github_1.resolveGitHubAuth)(inputs.apiUrl, inputs.apiKey, inputs.commentIdentity)
         : null;
     const postOptions = auth
-        ? { octokit: auth.octokit, identity: auth.identity }
-        : {};
+        ? { octokit: auth.octokit, identity: auth.identity, scanId: result.scanId }
+        : { scanId: result.scanId };
     // ── 7. Post PR review with inline comments ──
-    if (willReview && inputs.reviewEvent !== "none" && result.findings.length > 0) {
+    if (reviewEvent !== null && result.findings.length > 0) {
         try {
-            const resolvedEvent = resolveReviewEventForPass(inputs.reviewEvent, result.passed);
+            const resolvedEvent = resolveReviewEventForPass(reviewEvent, result.passed);
             await (0, annotate_1.postReviewComments)(result.findings, resolvedEvent, postOptions);
         }
         catch (err) {
@@ -32007,7 +32013,7 @@ async function run() {
     //
     // Runs whenever reviews are enabled — including when there are zero findings
     // left (the all-fixed case), which is exactly when stale threads should close.
-    if (willReview) {
+    if (reviewEvent !== null) {
         try {
             await (0, annotate_1.resolveFixedReviewThreads)(result.findings, postOptions);
         }

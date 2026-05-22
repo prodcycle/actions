@@ -33,6 +33,8 @@ export interface PostOptions {
   octokit?: ReturnType<typeof github.getOctokit>;
   /** Who the comment is authored by — drives the body's branding footer. */
   identity?: CommentIdentity;
+  /** Scan ID, surfaced in the branding footer for cross-reference. */
+  scanId?: string;
 }
 
 type Octokit = ReturnType<typeof github.getOctokit>;
@@ -410,7 +412,7 @@ export async function postReviewComments(
     event === "COMMENT"
       ? "🛡️ **ProdCycle Compliance** — findings detected but within acceptable thresholds."
       : "🛡️ **ProdCycle Compliance** — compliance violations found that require attention.";
-  const reviewBody = `${reviewSummary}\n\n---\n${brandFooter(options.identity, "")}`;
+  const reviewBody = `${reviewSummary}\n\n---\n${brandFooter(options.identity, options.scanId ?? "")}`;
 
   const inlineCount = comments.filter((c) => !c.subject_type).length;
   const fileCount = comments.filter((c) => c.subject_type === "file").length;
@@ -714,6 +716,10 @@ export async function resolveFixedReviewThreads(
   let resolved = 0;
   for (const t of stale) {
     try {
+      // Resolve FIRST, then reply. If we replied first and the resolve call
+      // then failed transiently, the thread would stay open and re-enter this
+      // loop on every push — appending a duplicate "Resolved" reply each time.
+      await resolveReviewThread(octokit, t.id);
       if (t.firstCommentId) {
         await octokit.rest.pulls.createReplyForReviewComment({
           owner,
@@ -723,7 +729,6 @@ export async function resolveFixedReviewThreads(
           body: `✅ Resolved by ProdCycle — \`${t.ruleId}\` is no longer detected${shortSha}.`,
         });
       }
-      await resolveReviewThread(octokit, t.id);
       resolved++;
     } catch (err) {
       core.debug(

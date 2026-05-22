@@ -229,23 +229,24 @@ async function run(): Promise<void> {
   // Resolved once and reused for review comments, the summary comment, and
   // thread resolution — only when there's PR work that needs a token.
   const isPullRequest = Boolean(context.payload.pull_request);
-  const willReview = inputs.reviewEvent !== "none" && isPullRequest;
+  // Concrete review intent: null when reviews are disabled or this isn't a PR.
+  // Narrowing through this const (rather than a boolean) lets TS know the value
+  // is not "none" inside the guarded block below.
+  const reviewEvent =
+    isPullRequest && inputs.reviewEvent !== "none" ? inputs.reviewEvent : null;
   const auth =
-    isPullRequest && (willReview || inputs.comment)
+    isPullRequest && (reviewEvent !== null || inputs.comment)
       ? await resolveGitHubAuth(inputs.apiUrl, inputs.apiKey, inputs.commentIdentity)
       : null;
   const postOptions = auth
-    ? { octokit: auth.octokit, identity: auth.identity }
-    : {};
+    ? { octokit: auth.octokit, identity: auth.identity, scanId: result.scanId }
+    : { scanId: result.scanId };
 
   // ── 7. Post PR review with inline comments ──
 
-  if (willReview && inputs.reviewEvent !== "none" && result.findings.length > 0) {
+  if (reviewEvent !== null && result.findings.length > 0) {
     try {
-      const resolvedEvent = resolveReviewEventForPass(
-        inputs.reviewEvent,
-        result.passed,
-      );
+      const resolvedEvent = resolveReviewEventForPass(reviewEvent, result.passed);
       await postReviewComments(result.findings, resolvedEvent, postOptions);
     } catch (err) {
       core.warning(
@@ -258,7 +259,7 @@ async function run(): Promise<void> {
   //
   // Runs whenever reviews are enabled — including when there are zero findings
   // left (the all-fixed case), which is exactly when stale threads should close.
-  if (willReview) {
+  if (reviewEvent !== null) {
     try {
       await resolveFixedReviewThreads(result.findings, postOptions);
     } catch (err) {
