@@ -64,7 +64,7 @@ describe("ComplianceApiClient", () => {
     expect(body.frameworks).toEqual(["soc2"]);
   });
 
-  it("includes actor in request body when provided", async () => {
+  it("never transmits diffs or actor in the request body", async () => {
     const mockResponse = {
       status: "success",
       statusCode: 200,
@@ -79,7 +79,7 @@ describe("ComplianceApiClient", () => {
           bySeverity: {},
           byFramework: {},
         },
-        scanId: "scan-actor",
+        scanId: "scan-no-extra",
       },
     };
 
@@ -89,47 +89,16 @@ describe("ComplianceApiClient", () => {
     } as Response);
 
     const client = new ComplianceApiClient(mockApiUrl, mockApiKey);
-    await client.validate(
-      [{ path: "main.tf", content: "" }],
-      { actor: "octocat" },
-    );
+    // The file carries a local diff (used for client-side diff filtering) — it
+    // must NOT be transmitted; the backend scans full content. `actor` was also
+    // dropped (the API doesn't consume it).
+    await client.validate([{ path: "main.tf", content: "x", diff: "@@ -1 +1 @@" }]);
 
     const body = JSON.parse(
       (fetchSpy.mock.calls[0][1] as RequestInit).body as string,
     );
-    expect(body.actor).toBe("octocat");
-  });
-
-  it("omits actor from request body when not provided", async () => {
-    const mockResponse = {
-      status: "success",
-      statusCode: 200,
-      data: {
-        passed: true,
-        findingsCount: 0,
-        findings: [],
-        summary: {
-          total: 0,
-          passed: 0,
-          failed: 0,
-          bySeverity: {},
-          byFramework: {},
-        },
-        scanId: "scan-no-actor",
-      },
-    };
-
-    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce({
-      ok: true,
-      json: async () => mockResponse,
-    } as Response);
-
-    const client = new ComplianceApiClient(mockApiUrl, mockApiKey);
-    await client.validate([{ path: "main.tf", content: "" }]);
-
-    const body = JSON.parse(
-      (fetchSpy.mock.calls[0][1] as RequestInit).body as string,
-    );
+    expect(body.files).toEqual({ "main.tf": "x" });
+    expect(body.diffs).toBeUndefined();
     expect(body.actor).toBeUndefined();
   });
 
@@ -756,7 +725,7 @@ describe("ComplianceApiClient", () => {
     const client = new ComplianceApiClient(mockApiUrl, mockApiKey);
     const result = await client.validate(
       [{ path: "main.tf", content: "x" }],
-      { frameworks: ["soc2"], actor: "octocat" },
+      { frameworks: ["soc2"] },
     );
 
     expect(fetchSpy).toHaveBeenCalledTimes(4);
@@ -772,12 +741,11 @@ describe("ComplianceApiClient", () => {
     expect(result.passed).toBe(true);
     expect(result.scanId).toBe("scan-chunked-99");
 
-    // Open-session body forwards frameworks + actor
+    // Open-session body forwards frameworks
     const openBody = JSON.parse(
       (fetchSpy.mock.calls[1][1] as RequestInit).body as string,
     );
     expect(openBody.frameworks).toEqual(["soc2"]);
-    expect(openBody.actor).toBe("octocat");
 
     // Chunk body has the file in path→content map shape
     const chunkBody = JSON.parse(

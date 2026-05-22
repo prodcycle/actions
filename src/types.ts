@@ -55,11 +55,7 @@ export interface ChangedFile {
 
 export interface ValidateRequest {
   files: Record<string, string>;
-  /** When present, the API receives diffs instead of full file contents */
-  diffs?: Record<string, string>;
   frameworks?: string[];
-  /** GitHub username of the user who opened the PR */
-  actor?: string;
   /** ProdCycle product association (drives accepted-risk/resolved filtering) */
   product_id?: string;
   sync_config_id?: string;

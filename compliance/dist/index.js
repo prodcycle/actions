@@ -30806,9 +30806,6 @@ class ComplianceApiClient {
         if (options?.frameworks && options.frameworks.length > 0) {
             body.frameworks = options.frameworks;
         }
-        if (options?.actor) {
-            body.actor = options.actor;
-        }
         // Always send `options` with `include_prompt: true` so the chunked
         // path produces the same response shape (with remediation prompt) as
         // sync `/validate`. Previously this object was elided when none of
@@ -30949,28 +30946,14 @@ class ComplianceApiClient {
      */
     async sendBatch(files, options) {
         const filesMap = {};
-        const diffsMap = {};
-        let hasDiffs = false;
         for (const f of files) {
             filesMap[f.path] = f.content;
-            if (f.diff) {
-                diffsMap[f.path] = f.diff;
-                hasDiffs = true;
-            }
         }
         const body = {
             files: filesMap,
         };
-        // When diffs are available (diff scan mode), include them so the API
-        // can scope its analysis to only the changed lines.
-        if (hasDiffs) {
-            body.diffs = diffsMap;
-        }
         if (options?.frameworks && options.frameworks.length > 0) {
             body.frameworks = options.frameworks;
-        }
-        if (options?.actor) {
-            body.actor = options.actor;
         }
         if (options?.productId) {
             body.product_id = options.productId;
@@ -31108,15 +31091,12 @@ function createBatches(files) {
 }
 /** Estimate the JSON-serialized size of a file entry in bytes. */
 function estimateFileBytes(file) {
-    // Buffer.byteLength is accurate for UTF-8; add overhead for JSON key/value quoting
-    let size = Buffer.byteLength(file.path, "utf8") +
+    // Only `path` + `content` are sent in the request payload; the per-file diff
+    // is kept locally for client-side diff filtering and is not transmitted.
+    // Buffer.byteLength is accurate for UTF-8; add overhead for JSON key/value quoting.
+    return (Buffer.byteLength(file.path, "utf8") +
         Buffer.byteLength(file.content, "utf8") +
-        PER_FILE_OVERHEAD_BYTES;
-    // If diffs are present, they are also serialized in the payload
-    if (file.diff) {
-        size += Buffer.byteLength(file.diff, "utf8") + PER_FILE_OVERHEAD_BYTES;
-    }
-    return size;
+        PER_FILE_OVERHEAD_BYTES);
 }
 /**
  * Merge multiple batch responses into a single ValidateResponse.
@@ -31951,7 +31931,6 @@ async function run() {
         failOn: inputs.failOn.length > 0 ? inputs.failOn : undefined,
         excludeAcceptedRisk: inputs.excludeAcceptedRisk,
         excludeResolved: inputs.excludeResolved,
-        actor: prAuthor,
         productId: inputs.productId,
         syncConfigId: inputs.syncConfigId,
         // Only a full-repo scan may reconcile against the product. Diff scans use

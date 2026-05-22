@@ -70,7 +70,6 @@ export class ComplianceApiClient {
       failOn?: string[];
       excludeAcceptedRisk?: boolean;
       excludeResolved?: boolean;
-      actor?: string;
       productId?: string;
       syncConfigId?: string;
       reconcile?: boolean;
@@ -135,7 +134,6 @@ export class ComplianceApiClient {
       failOn?: string[];
       excludeAcceptedRisk?: boolean;
       excludeResolved?: boolean;
-      actor?: string;
       productId?: string;
       syncConfigId?: string;
       reconcile?: boolean;
@@ -224,14 +222,10 @@ export class ComplianceApiClient {
     severityThreshold?: string;
     failOn?: string[];
     excludeAcceptedRisk?: boolean;
-    actor?: string;
   }): Record<string, unknown> {
     const body: Record<string, unknown> = {};
     if (options?.frameworks && options.frameworks.length > 0) {
       body.frameworks = options.frameworks;
-    }
-    if (options?.actor) {
-      body.actor = options.actor;
     }
     // Always send `options` with `include_prompt: true` so the chunked
     // path produces the same response shape (with remediation prompt) as
@@ -371,7 +365,6 @@ export class ComplianceApiClient {
       failOn?: string[];
       excludeAcceptedRisk?: boolean;
       excludeResolved?: boolean;
-      actor?: string;
       productId?: string;
       syncConfigId?: string;
       reconcile?: boolean;
@@ -421,40 +414,22 @@ export class ComplianceApiClient {
       failOn?: string[];
       excludeAcceptedRisk?: boolean;
       excludeResolved?: boolean;
-      actor?: string;
       productId?: string;
       syncConfigId?: string;
       reconcile?: boolean;
     },
   ): Promise<ValidateResponse> {
     const filesMap: Record<string, string> = {};
-    const diffsMap: Record<string, string> = {};
-    let hasDiffs = false;
-
     for (const f of files) {
       filesMap[f.path] = f.content;
-      if (f.diff) {
-        diffsMap[f.path] = f.diff;
-        hasDiffs = true;
-      }
     }
 
     const body: ValidateRequest = {
       files: filesMap,
     };
 
-    // When diffs are available (diff scan mode), include them so the API
-    // can scope its analysis to only the changed lines.
-    if (hasDiffs) {
-      body.diffs = diffsMap;
-    }
-
     if (options?.frameworks && options.frameworks.length > 0) {
       body.frameworks = options.frameworks;
-    }
-
-    if (options?.actor) {
-      body.actor = options.actor;
     }
 
     if (options?.productId) {
@@ -626,18 +601,14 @@ export function createBatches(files: ChangedFile[]): ChangedFile[][] {
 
 /** Estimate the JSON-serialized size of a file entry in bytes. */
 function estimateFileBytes(file: ChangedFile): number {
-  // Buffer.byteLength is accurate for UTF-8; add overhead for JSON key/value quoting
-  let size =
+  // Only `path` + `content` are sent in the request payload; the per-file diff
+  // is kept locally for client-side diff filtering and is not transmitted.
+  // Buffer.byteLength is accurate for UTF-8; add overhead for JSON key/value quoting.
+  return (
     Buffer.byteLength(file.path, "utf8") +
     Buffer.byteLength(file.content, "utf8") +
-    PER_FILE_OVERHEAD_BYTES;
-
-  // If diffs are present, they are also serialized in the payload
-  if (file.diff) {
-    size += Buffer.byteLength(file.diff, "utf8") + PER_FILE_OVERHEAD_BYTES;
-  }
-
-  return size;
+    PER_FILE_OVERHEAD_BYTES
+  );
 }
 
 /**

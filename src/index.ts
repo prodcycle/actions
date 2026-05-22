@@ -192,7 +192,6 @@ async function run(): Promise<void> {
     failOn: inputs.failOn.length > 0 ? inputs.failOn : undefined,
     excludeAcceptedRisk: inputs.excludeAcceptedRisk,
     excludeResolved: inputs.excludeResolved,
-    actor: prAuthor,
     productId: inputs.productId,
     syncConfigId: inputs.syncConfigId,
     // Only a full-repo scan may reconcile against the product. Diff scans use

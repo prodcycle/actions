@@ -232,12 +232,23 @@ In your repository, go to **Settings > Secrets and variables > Actions** and add
 
 Create `.github/workflows/compliance.yml` in your repository with the configuration from the Quick start section above.
 
+### 4. (Optional) Install the ProdCycle GitHub App
+
+To have comments authored by **`prodcycle[bot]`** (with the ProdCycle name and avatar) instead of `github-actions[bot]`, install the [ProdCycle GitHub App](https://github.com/apps/prodcycle) on your repository or organization:
+
+- The App must be granted **`Pull requests: Read & write`** so the scanner can post reviews and resolve threads.
+- No extra workflow config is needed — with `comment-identity: auto` (the default) the action automatically uses the App when it's installed, and falls back to `github-actions[bot]` when it isn't.
+
+This step is **optional**: the scanner works fully without the App; only the comment author differs.
+
 ## Permissions
 
-The actions require the following GitHub token permissions:
+The action needs the following GitHub token permissions (set under `permissions:` in your workflow):
 
 - `contents: read` to checkout and read changed files
-- `pull-requests: write` to post annotations and summary comments
+- `pull-requests: write` to post annotations, summary comments, inline reviews, and to resolve threads when findings are fixed
+
+When posting as `prodcycle[bot]`, the equivalent permission is granted to the ProdCycle GitHub App (step 4) rather than the workflow token.
 
 ## Development
 
