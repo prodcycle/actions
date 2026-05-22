@@ -514,9 +514,9 @@ export class ComplianceApiClient {
           const text = await response.text().catch(() => "");
           const error = tryParseError(text);
 
-          // Surface 413 as a specific error so validate() can re-split
-          // OR switch to the chunked-session endpoint when the server's
-          // 413 details point at /v1/compliance/scans (Phase 1d).
+          // Surface 413 as a specific error so validate() can re-split OR
+          // switch to the chunked-session endpoint when the server's 413
+          // response points there via `suggestedEndpoint`.
           if (response.status === 413) {
             const parsedBody = tryParseJson(text);
             throw new PayloadTooLargeError(
@@ -525,11 +525,9 @@ export class ComplianceApiClient {
             );
           }
 
-          // Honor Retry-After on 429/503 — the API uses these for the
-          // per-workspace rate limit (#1087) and the tier circuit
-          // breaker (#1091). The server-specified interval REPLACES the
-          // linear backoff for the next attempt; missing header falls
-          // back to linear.
+          // Honor Retry-After on 429 (rate limit) and 503 (temporarily
+          // unavailable). The server-specified interval REPLACES the linear
+          // backoff for the next attempt; a missing header falls back to linear.
           if (response.status === 429 || response.status === 503) {
             const retryAfter = parseRetryAfter(response.headers.get("retry-after"));
             if (retryAfter !== null) {
@@ -698,10 +696,9 @@ function mergeResults(results: ValidateResponse[]): ValidateResponse {
  * The parsed body is preserved so `validate()` can read
  * `error.details.suggestedEndpoint` and decide whether the right next
  * step is to keep splitting batches OR to switch to the chunked-session
- * endpoint (Phase 1d). When the server says
- * `suggestedEndpoint = '/v1/compliance/scans'`, that's a strong hint
- * that the batch is large enough that further splitting will just hit
- * the same 413 again — chunked sessions are the right answer.
+ * endpoint. When the server points at the chunked-session endpoint, that's a
+ * strong hint that the batch is large enough that further splitting will just
+ * hit the same 413 again — chunked sessions are the right answer.
  */
 export class PayloadTooLargeError extends Error {
   constructor(
@@ -840,8 +837,8 @@ function tryParseJson(text: string): {
  *   - HTTP-date: an absolute date (e.g. "Wed, 21 Oct 2026 07:28:00 GMT")
  * Returns the wait in seconds, or null if the header is missing/unparseable.
  *
- * Helper for honoring the rate-limit (429) and circuit-breaker (503)
- * server signals — see Phase 1c (#1087) and Phase 1e (#1091).
+ * Helper for honoring the rate-limit (429) and service-unavailable (503)
+ * server signals.
  */
 function parseRetryAfter(value: string | null): number | null {
   if (!value) return null;

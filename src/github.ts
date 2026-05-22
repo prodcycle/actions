@@ -2,25 +2,18 @@
 // ProdCycle Compliance Code Scanner: GitHub identity resolution
 // =============================================================================
 //
-// Decides *who* leaves the PR comments and reviews.
+// Decides *who* authors the PR comments and reviews.
 //
-// GitHub attributes every comment to whoever owns the token that posts it.
-// The built-in `GITHUB_TOKEN` is always `github-actions[bot]`. To have the
+// GitHub attributes every comment to whoever owns the token that posts it. The
+// built-in `GITHUB_TOKEN` always posts as `github-actions[bot]`. To have the
 // comments authored by the ProdCycle GitHub App (`prodcycle[bot]`, with the
-// ProdCycle name + avatar) we need a short-lived *installation token* scoped
-// to this repo.
+// ProdCycle name + avatar) the action requests a short-lived, repo-scoped App
+// token from the ProdCycle API using your `pc_` API key.
 //
-// We can't ship the App's private key in the action (it's ProdCycle's signing
-// secret), so instead we ask the ProdCycle backend to mint one for us: the
-// `pc_` API key already identifies the workspace, and the backend knows which
-// App installation maps to it (`getInstallationAccessToken(organizationId)`).
-//
-//   POST {apiUrl}/v1/compliance/actions/github/installation-token  { owner, repo }
-//   → { status: "success", data: { token } }
-//
-// If that endpoint is unavailable (older backend, App not installed, network
-// error) we transparently fall back to `GITHUB_TOKEN` so the action keeps
-// working — just authored by `github-actions[bot]` instead of `prodcycle[bot]`.
+// If that token can't be obtained (the ProdCycle GitHub App isn't installed on
+// the repo, an older API, or a network error) the action transparently falls
+// back to `GITHUB_TOKEN` and keeps working — comments are simply authored by
+// `github-actions[bot]` instead of `prodcycle[bot]`.
 // =============================================================================
 
 import * as core from "@actions/core";
