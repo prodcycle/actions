@@ -31626,8 +31626,8 @@ async function collectAllFiles(repoRoot, include, exclude) {
 // `pc_` API key already identifies the workspace, and the backend knows which
 // App installation maps to it (`getInstallationAccessToken(organizationId)`).
 //
-//   POST {apiUrl}/v1/github/installation-token   { owner, repo }
-//   → { status: "success", data: { token, expiresAt } }
+//   POST {apiUrl}/v1/compliance/actions/github/installation-token  { owner, repo }
+//   → { status: "success", data: { token } }
 //
 // If that endpoint is unavailable (older backend, App not installed, network
 // error) we transparently fall back to `GITHUB_TOKEN` so the action keeps
@@ -31722,7 +31722,7 @@ async function mintProdcycleAppToken(apiUrl, apiKey) {
     const { owner, repo } = github.context.repo;
     if (!owner || !repo)
         return null;
-    const url = `${apiUrl.replace(/\/+$/, "")}/v1/github/installation-token`;
+    const url = `${apiUrl.replace(/\/+$/, "")}/v1/compliance/actions/github/installation-token`;
     try {
         const response = await fetch(url, {
             method: "POST",

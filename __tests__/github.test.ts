@@ -51,7 +51,9 @@ describe("resolveGitHubAuth", () => {
     expect(core.setSecret).toHaveBeenCalledWith("app-installation-token");
     // Correct endpoint + repo payload
     const [url, init] = fetchSpy.mock.calls[0];
-    expect(url).toBe("https://api.prodcycle.com/v1/github/installation-token");
+    expect(url).toBe(
+      "https://api.prodcycle.com/v1/compliance/actions/github/installation-token",
+    );
     expect(JSON.parse((init as RequestInit).body as string)).toEqual({
       owner: "acme",
       repo: "widgets",

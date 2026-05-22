@@ -1,4 +1,8 @@
-# Backend dependency: `POST /v1/github/installation-token`
+# Backend dependency: `POST /v1/compliance/actions/github/installation-token`
+
+> **Status:** implemented in `prodcycle/api` on the `/v1/compliance/actions/*`
+> router (api tier, `pc_`-key auth + compliance feature gate) — see
+> `ComplianceInteractiveController.getGithubInstallationToken`.
 
 The Compliance action posts PR comments as **`prodcycle[bot]`** (the ProdCycle
 GitHub App) when `comment-identity` is `auto` (default) or `app`. Because the
@@ -13,7 +17,7 @@ Until this endpoint exists, the action degrades gracefully to `GITHUB_TOKEN`
 ## Contract
 
 ```
-POST {api-url}/v1/github/installation-token
+POST {api-url}/v1/compliance/actions/github/installation-token
 Authorization: Bearer pc_<key>
 x-api-version: v1
 Content-Type: application/json
