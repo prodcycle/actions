@@ -714,6 +714,7 @@ export async function resolveFixedReviewThreads(
 
   const shortSha = headSha ? ` as of ${headSha.substring(0, 7)}` : "";
   let resolved = 0;
+  let permissionDenied = 0;
   for (const t of stale) {
     try {
       // Resolve FIRST, then reply. If we replied first and the resolve call
@@ -731,6 +732,13 @@ export async function resolveFixedReviewThreads(
       }
       resolved++;
     } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      // GitHub returns "Resource not accessible by integration" when the
+      // GITHUB_TOKEN (github-actions[bot]) tries to call resolveReviewThread —
+      // the App backing GITHUB_TOKEN doesn't have the permission. The fix is
+      // to post as the ProdCycle App; surface a single, actionable warning
+      // explaining this rather than the same per-thread debug noise.
+      if (/Resource not accessible by integration/i.test(msg)) permissionDenied++;
       core.debug(
         `Failed to resolve thread ${t.id} (${t.ruleId}): ${err instanceof Error ? err.message : String(err)}`,
       );
@@ -740,6 +748,18 @@ export async function resolveFixedReviewThreads(
   if (resolved > 0) {
     core.info(
       `Resolved ${resolved} ProdCycle review thread(s) whose findings are now fixed.`,
+    );
+  }
+  if (permissionDenied > 0) {
+    // Surface the known GITHUB_TOKEN limitation once, with the fix, instead
+    // of leaving the user wondering why threads stay open across pushes.
+    core.warning(
+      `Could not resolve ${permissionDenied} review thread(s): GitHub's default ` +
+        `GITHUB_TOKEN (github-actions[bot]) is not permitted to call the ` +
+        `resolveReviewThread GraphQL mutation, even with pull-requests: write. ` +
+        `Install the ProdCycle GitHub App on this repository so the action posts ` +
+        `as prodcycle[bot] — the App is permitted to resolve threads. See the ` +
+        `"Posting as prodcycle[bot]" section of the action README.`,
     );
   }
 }

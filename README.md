@@ -107,7 +107,9 @@ The scanner leaves three kinds of feedback, all branded as **ProdCycle Complianc
 
 **Posting as `prodcycle[bot]`.** With `comment-identity: auto` (the default), the action requests a short-lived token from the [ProdCycle GitHub App](https://github.com/apps/prodcycle) (using your `pc_` API key) so comments are authored by **`prodcycle[bot]`** with the ProdCycle name and avatar. This requires the ProdCycle GitHub App to be installed on the repository. If it isn't (or the backend is unreachable), the action transparently falls back to the built-in `GITHUB_TOKEN` and posts as `github-actions[bot]` — the comment content is identical, only the author differs. Set `comment-identity: github-token` to always use `github-actions[bot]`, or `app` to require the App identity.
 
-**Auto-resolving fixed findings.** When a contributor pushes a fix and the finding disappears from the next scan, the action posts a brief "✅ Resolved by ProdCycle" reply and **marks that review thread resolved**. Only threads ProdCycle authored are ever touched — human and other-bot threads are left alone. This needs `pull-requests: write` on the token (already in the Quick start workflow).
+**Auto-resolving fixed findings.** When a contributor pushes a fix and the finding disappears from the next scan, the action posts a brief "✅ Resolved by ProdCycle" reply and **marks that review thread resolved**. Only threads ProdCycle authored are ever touched — human and other-bot threads are left alone.
+
+> ⚠️ **Auto-resolve requires the ProdCycle App.** GitHub does **not** allow the default `GITHUB_TOKEN` (`github-actions[bot]`) to call the `resolveReviewThread` GraphQL mutation — it returns "Resource not accessible by integration" even with `pull-requests: write`. Install the [ProdCycle GitHub App](https://github.com/apps/prodcycle) so the action posts as `prodcycle[bot]`, which **is** permitted to resolve threads. Without the App, inline comments still post (as `github-actions[bot]`) but old threads stay open across pushes — the action will log a one-time warning telling you exactly this.
 
 ### Respecting accepted-risk and resolved findings
 
