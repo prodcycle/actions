@@ -29969,6 +29969,7 @@ exports.postSummaryComment = postSummaryComment;
 exports.postReviewComments = postReviewComments;
 exports.extractRuleIdFromBody = extractRuleIdFromBody;
 exports.parseDiffHunks = parseDiffHunks;
+exports.resolveFixedReviewThreads = resolveFixedReviewThreads;
 exports.writeJobSummary = writeJobSummary;
 const core = __importStar(__nccwpck_require__(6966));
 const github = __importStar(__nccwpck_require__(4903));
@@ -29984,14 +29985,46 @@ const SEVERITY_LEVEL = {
     medium: "warning",
     low: "notice",
 };
+const PRODCYCLE_APP_URL = "https://app.prodcycle.com";
+const PRODCYCLE_DOCS_URL = "https://docs.prodcycle.com/compliance";
+/**
+ * Use the caller-provided octokit (App identity) when present, otherwise build
+ * one from the github-token input. Returns null when no token is available.
+ */
+function resolveOctokit(provided) {
+    if (provided)
+        return provided;
+    const token = core.getInput("github-token") || process.env.GITHUB_TOKEN;
+    if (!token)
+        return null;
+    return github.getOctokit(token);
+}
+/**
+ * Branding footer appended to comment bodies. When ProdCycle posts as its own
+ * App (`prodcycle[bot]`), the author already carries the brand, so the footer
+ * stays light; with github-actions[bot] we make the ProdCycle attribution
+ * explicit so it's clear who left the comment.
+ */
+function brandFooter(identity, scanId) {
+    const scan = scanId ? `Scan \`${scanId}\`` : "";
+    if (identity === "prodcycle-app") {
+        return `<sub>${scan ? scan + " · " : ""}[ProdCycle Compliance](${PRODCYCLE_APP_URL})</sub>`;
+    }
+    return `<sub>🛡️ Posted by [ProdCycle Compliance](${PRODCYCLE_APP_URL}) · [Docs](${PRODCYCLE_DOCS_URL})${scan ? " · " + scan : ""}</sub>`;
+}
 /**
  * Create GitHub annotations for each finding.
  * These appear inline on the PR diff view.
  */
 function createAnnotations(findings) {
     for (const finding of findings) {
-        const level = SEVERITY_LEVEL[finding.severity] || "warning";
-        const title = `[${finding.severity.toUpperCase()}] ${finding.ruleId}`;
+        // Advisory findings are informational and never block — surface them as a
+        // notice regardless of severity, and label them so reviewers know they
+        // don't have to act on them to pass the check.
+        const level = finding.advisory
+            ? "notice"
+            : SEVERITY_LEVEL[finding.severity] || "warning";
+        const title = `[${finding.severity.toUpperCase()}]${finding.advisory ? " (advisory)" : ""} ${finding.ruleId}`;
         const message = [
             finding.message,
             "",
@@ -30021,9 +30054,9 @@ function createAnnotations(findings) {
 /**
  * Post or update a summary comment on the PR.
  */
-async function postSummaryComment(findings, summary, scanId, passed, _apiUrl) {
-    const token = core.getInput("github-token") || process.env.GITHUB_TOKEN;
-    if (!token) {
+async function postSummaryComment(findings, summary, scanId, passed, options = {}) {
+    const octokit = resolveOctokit(options.octokit);
+    if (!octokit) {
         core.warning("No GitHub token available. Skipping PR comment. Set the 'github-token' input or ensure GITHUB_TOKEN is in the environment.");
         return;
     }
@@ -30032,12 +30065,11 @@ async function postSummaryComment(findings, summary, scanId, passed, _apiUrl) {
         core.debug("Not a pull request event. Skipping PR comment.");
         return;
     }
-    const octokit = github.getOctokit(token);
     const prNumber = context.payload.pull_request.number;
     const { owner, repo } = context.repo;
     const headSha = context.payload.pull_request.head?.sha || "";
     const repoUrl = `https://github.com/${owner}/${repo}`;
-    const body = buildCommentBody(findings, summary, scanId, passed, repoUrl, headSha);
+    const body = buildCommentBody(findings, summary, scanId, passed, repoUrl, headSha, options.identity);
     const marker = "<!-- prodcycle-actions-compliance -->";
     const fullBody = `${marker}\n${body}`;
     // Look for an existing comment to update
@@ -30067,20 +30099,20 @@ async function postSummaryComment(findings, summary, scanId, passed, _apiUrl) {
         core.debug("Created new PR comment");
     }
 }
-function buildCommentBody(findings, summary, scanId, passed, repoUrl, headSha) {
+function buildCommentBody(findings, summary, scanId, passed, repoUrl, headSha, identity) {
+    const footer = ["", "---", brandFooter(identity, scanId)];
     if (summary.total === 0) {
         const lines = [
-            "### ✅ Compliance Check Passed",
+            "### 🛡️ ProdCycle Compliance · ✅ Passed",
             "",
             "No compliance findings were detected in this PR's changed files.",
-            "",
-            `Scan ID: \`${scanId}\``,
+            ...footer,
         ];
         return lines.join("\n");
     }
     const status = passed
-        ? "### ✅ Compliance Check Passed"
-        : "### ❌ Compliance Check Failed";
+        ? "### 🛡️ ProdCycle Compliance · ✅ Passed"
+        : "### 🛡️ ProdCycle Compliance · ❌ Failed";
     const lines = [status, ""];
     // Summary table
     lines.push("| Metric | Count |");
@@ -30125,7 +30157,8 @@ function buildCommentBody(findings, summary, scanId, passed, repoUrl, headSha) {
             else {
                 location = `\`${f.resourcePath}\``;
             }
-            lines.push(`- ${icon} **${f.ruleId}** in ${location}: ${f.message}`);
+            const advisoryTag = f.advisory ? " _(advisory)_" : "";
+            lines.push(`- ${icon} **${f.ruleId}**${advisoryTag} in ${location}: ${f.message}`);
             lines.push(`  - Remediation: ${f.remediation}`);
         }
         if (findings.length > 10) {
@@ -30134,10 +30167,8 @@ function buildCommentBody(findings, summary, scanId, passed, repoUrl, headSha) {
         }
         lines.push("");
         lines.push("</details>");
-        lines.push("");
     }
-    // Scan ID for reference (dashboard page coming soon)
-    lines.push(`Scan ID: \`${scanId}\``);
+    lines.push("", "---", brandFooter(identity, scanId));
     return lines.join("\n");
 }
 /**
@@ -30145,9 +30176,9 @@ function buildCommentBody(findings, summary, scanId, passed, repoUrl, headSha) {
  * were detected. This creates the same experience as review bots like Greptile —
  * comments appear directly on the diff with the relevant code highlighted.
  */
-async function postReviewComments(findings, reviewEvent) {
-    const token = core.getInput("github-token") || process.env.GITHUB_TOKEN;
-    if (!token) {
+async function postReviewComments(findings, reviewEvent, options = {}) {
+    const octokit = resolveOctokit(options.octokit);
+    if (!octokit) {
         core.warning("No GitHub token available. Skipping PR review comments.");
         return;
     }
@@ -30156,7 +30187,6 @@ async function postReviewComments(findings, reviewEvent) {
         core.debug("Not a pull request event. Skipping PR review comments.");
         return;
     }
-    const octokit = github.getOctokit(token);
     const prNumber = context.payload.pull_request.number;
     const commitSha = context.payload.pull_request.head?.sha;
     const { owner, repo } = context.repo;
@@ -30186,9 +30216,10 @@ async function postReviewComments(findings, reviewEvent) {
         const inDiff = fileRanges?.some((range) => f.endLine >= range.start && f.endLine <= range.end);
         if (inDiff && fileRanges) {
             // Inline comment on the specific line(s)
+            const advisoryTag = f.advisory ? " _(advisory — non-blocking)_" : "";
             const body = [
                 ruleMarker(f.ruleId),
-                `${icon} **[${f.severity.toUpperCase()}] ${f.ruleId}**`,
+                `${icon} **[${f.severity.toUpperCase()}] ${f.ruleId}**${advisoryTag}`,
                 "",
                 f.message,
                 "",
@@ -30230,9 +30261,10 @@ async function postReviewComments(findings, reviewEvent) {
                 ? `L${f.startLine}-L${f.endLine}`
                 : `L${f.startLine}`;
             const fileLink = `${repoUrl}/blob/${commitSha}/${f.resourcePath}#${lineFragment}`;
+            const advisoryTag = f.advisory ? " _(advisory — non-blocking)_" : "";
             const body = [
                 ruleMarker(f.ruleId),
-                `${icon} **[${f.severity.toUpperCase()}] ${f.ruleId}** (line ${f.startLine}${f.endLine !== f.startLine ? `–${f.endLine}` : ""}) ([view](${fileLink}))`,
+                `${icon} **[${f.severity.toUpperCase()}] ${f.ruleId}**${advisoryTag} (line ${f.startLine}${f.endLine !== f.startLine ? `–${f.endLine}` : ""}) ([view](${fileLink}))`,
                 "",
                 f.message,
                 "",
@@ -30262,9 +30294,10 @@ async function postReviewComments(findings, reviewEvent) {
         return;
     }
     const event = reviewEvent;
-    const reviewBody = event === "COMMENT"
-        ? "✅ **ProdCycle Compliance Scan** — findings detected but within acceptable thresholds."
-        : "❌ **ProdCycle Compliance Scan** — compliance violations found that require attention.";
+    const reviewSummary = event === "COMMENT"
+        ? "🛡️ **ProdCycle Compliance** — findings detected but within acceptable thresholds."
+        : "🛡️ **ProdCycle Compliance** — compliance violations found that require attention.";
+    const reviewBody = `${reviewSummary}\n\n---\n${brandFooter(options.identity, "")}`;
     const inlineCount = comments.filter((c) => !c.subject_type).length;
     const fileCount = comments.filter((c) => c.subject_type === "file").length;
     core.info(`Posting review: ${inlineCount} inline comment(s), ${fileCount} file-level comment(s).`);
@@ -30435,6 +30468,124 @@ function parseDiffHunks(patch) {
     }
     return ranges;
 }
+/** Stable key matching a finding to the thread that reported it. */
+function threadKey(path, ruleId) {
+    return `${path}::${ruleId}`;
+}
+/**
+ * Resolve ProdCycle review threads whose finding is no longer present.
+ *
+ * After a contributor pushes a fix, the finding disappears from the next scan.
+ * Without this, the original inline comment lingers as an unresolved thread
+ * forever. Here we walk the PR's review threads, keep only the ones ProdCycle
+ * authored (identified by the `<!-- prodcycle-rule:RULE_ID -->` marker), and
+ * for any whose `(path, ruleId)` is no longer in the current findings we post a
+ * short "resolved" reply and mark the thread resolved via GraphQL.
+ *
+ * Threads we didn't author (humans, other bots) are never touched. Requires the
+ * token to have `pull-requests: write`. All failures are non-fatal.
+ */
+async function resolveFixedReviewThreads(findings, options = {}) {
+    const octokit = resolveOctokit(options.octokit);
+    if (!octokit)
+        return;
+    const context = github.context;
+    if (!context.payload.pull_request) {
+        core.debug("Not a pull request event. Skipping thread resolution.");
+        return;
+    }
+    const prNumber = context.payload.pull_request.number;
+    const headSha = context.payload.pull_request.head?.sha || "";
+    const { owner, repo } = context.repo;
+    // (path::ruleId) still flagged by the current scan — these stay open.
+    const active = new Set();
+    for (const f of findings)
+        active.add(threadKey(f.resourcePath, f.ruleId));
+    let threads;
+    try {
+        threads = await fetchProdcycleReviewThreads(octokit, owner, repo, prNumber);
+    }
+    catch (err) {
+        core.warning(`Could not fetch review threads to resolve: ${err instanceof Error ? err.message : String(err)}`);
+        return;
+    }
+    const stale = threads.filter((t) => !t.isResolved && !active.has(threadKey(t.path, t.ruleId)));
+    if (stale.length === 0) {
+        core.debug("No fixed ProdCycle review threads to resolve.");
+        return;
+    }
+    const shortSha = headSha ? ` as of ${headSha.substring(0, 7)}` : "";
+    let resolved = 0;
+    for (const t of stale) {
+        try {
+            if (t.firstCommentId) {
+                await octokit.rest.pulls.createReplyForReviewComment({
+                    owner,
+                    repo,
+                    pull_number: prNumber,
+                    comment_id: t.firstCommentId,
+                    body: `✅ Resolved by ProdCycle — \`${t.ruleId}\` is no longer detected${shortSha}.`,
+                });
+            }
+            await resolveReviewThread(octokit, t.id);
+            resolved++;
+        }
+        catch (err) {
+            core.debug(`Failed to resolve thread ${t.id} (${t.ruleId}): ${err instanceof Error ? err.message : String(err)}`);
+        }
+    }
+    if (resolved > 0) {
+        core.info(`Resolved ${resolved} ProdCycle review thread(s) whose findings are now fixed.`);
+    }
+}
+const REVIEW_THREADS_QUERY = `
+query($owner: String!, $repo: String!, $pr: Int!, $cursor: String) {
+  repository(owner: $owner, name: $repo) {
+    pullRequest(number: $pr) {
+      reviewThreads(first: 100, after: $cursor) {
+        pageInfo { hasNextPage endCursor }
+        nodes {
+          id
+          isResolved
+          path
+          comments(first: 1) { nodes { body databaseId } }
+        }
+      }
+    }
+  }
+}`;
+/**
+ * Page through a PR's review threads and return only those ProdCycle authored,
+ * tagged with the ruleId parsed from their leading comment marker.
+ */
+async function fetchProdcycleReviewThreads(octokit, owner, repo, prNumber) {
+    const out = [];
+    let cursor = null;
+    for (;;) {
+        const data = await octokit.graphql(REVIEW_THREADS_QUERY, { owner, repo, pr: prNumber, cursor });
+        const conn = data.repository.pullRequest.reviewThreads;
+        for (const node of conn.nodes) {
+            const first = node.comments.nodes[0];
+            const ruleId = extractRuleIdFromBody(first?.body);
+            if (!ruleId)
+                continue; // not a ProdCycle thread
+            out.push({
+                id: node.id,
+                isResolved: node.isResolved,
+                path: node.path,
+                ruleId,
+                firstCommentId: first?.databaseId,
+            });
+        }
+        if (!conn.pageInfo.hasNextPage)
+            break;
+        cursor = conn.pageInfo.endCursor;
+    }
+    return out;
+}
+async function resolveReviewThread(octokit, threadId) {
+    await octokit.graphql(`mutation($id: ID!) { resolveReviewThread(input: { threadId: $id }) { thread { id } } }`, { id: threadId });
+}
 /**
  * Write a GitHub Actions job summary (visible in the Actions tab).
  */
@@ -30512,15 +30663,12 @@ Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.PayloadTooLargeError = exports.ComplianceApiClient = void 0;
 exports.createBatches = createBatches;
 const core = __importStar(__nccwpck_require__(6966));
-const REQUEST_TIMEOUT_MS = 120_000; // 2 minutes
-const MAX_RETRIES = 2;
-const RETRY_DELAY_MS = 2_000;
 /**
- * Hard ceiling on Retry-After honoring. Even if the server (or an
- * upstream proxy) asks for an absurd interval we cap it so a misbehaving
- * tier can't wedge the action job for the full GitHub-Actions step
- * timeout. Configurable via `COMPLIANCE_MAX_RETRY_AFTER_MS` for operators
- * who want a different ceiling in their CI.
+ * Per-request timeout and retry budget. Chunked-session scans on large
+ * monorepos can take tens of seconds per request, so we mirror the
+ * ProdCycle CLI's longer defaults (300s timeout, 3 retries) rather than the
+ * old 120s/2 — the CLI hardened these after GA load testing. Both are
+ * overridable via env for operators who want a different budget in CI.
  */
 function envInt(name, fallback) {
     const raw = process.env[name];
@@ -30529,6 +30677,16 @@ function envInt(name, fallback) {
     const parsed = Number(raw);
     return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback;
 }
+const REQUEST_TIMEOUT_MS = envInt("COMPLIANCE_REQUEST_TIMEOUT_MS", 300_000); // 5 min
+const MAX_RETRIES = envInt("COMPLIANCE_MAX_RETRIES", 3);
+const RETRY_DELAY_MS = 2_000;
+/**
+ * Hard ceiling on Retry-After honoring. Even if the server (or an
+ * upstream proxy) asks for an absurd interval we cap it so a misbehaving
+ * tier can't wedge the action job for the full GitHub-Actions step
+ * timeout. Configurable via `COMPLIANCE_MAX_RETRY_AFTER_MS` for operators
+ * who want a different ceiling in their CI.
+ */
 const MAX_RETRY_AFTER_MS = envInt("COMPLIANCE_MAX_RETRY_AFTER_MS", 60_000);
 /**
  * Maximum payload size per request in bytes.
@@ -30603,7 +30761,42 @@ class ComplianceApiClient {
         }
         core.info(`Finalizing scan ${session.scanId}...`);
         const finalResult = await this.postRaw(`/v1/compliance/scans/${encodeURIComponent(session.scanId)}/complete`, {});
-        return normalizeFindings({ ...finalResult, scanId: session.scanId });
+        // The `/complete` response carries the verdict + counts but NOT the full
+        // findings array (or a complete summary). Backfill them from the scan
+        // detail endpoint — mirrors the ProdCycle CLI, and avoids crashing on an
+        // absent `findings` field. The race where the detail isn't materialized
+        // yet is rare; we degrade to an empty findings list if it's missing.
+        let findings = finalResult.findings ?? [];
+        let summary = finalResult.summary;
+        if (findings.length === 0 && finalResult.findingsCount > 0) {
+            const detail = await this.fetchScanDetail(session.scanId);
+            if (detail) {
+                findings = detail.findings ?? findings;
+                summary = detail.summary ?? summary;
+            }
+        }
+        return normalizeFindings({
+            passed: finalResult.passed,
+            findingsCount: finalResult.findingsCount,
+            findings,
+            summary: completeSummary(summary, findings),
+            scanId: session.scanId,
+            prompt: finalResult.prompt,
+        });
+    }
+    /**
+     * GET /v1/compliance/scans/:id — used to backfill the findings array after a
+     * chunked session, since `/complete` only returns the verdict + counts.
+     * Returns `null` (non-fatal) if the detail can't be fetched.
+     */
+    async fetchScanDetail(scanId) {
+        try {
+            return await this.requestRaw("GET", `/v1/compliance/scans/${encodeURIComponent(scanId)}`);
+        }
+        catch (err) {
+            core.warning(`Could not fetch scan detail to backfill findings: ${err instanceof Error ? err.message : String(err)}`);
+            return null;
+        }
     }
     buildOpenSessionBody(options) {
         const body = {};
@@ -30637,7 +30830,15 @@ class ComplianceApiClient {
      * retry + Retry-After logic in sendBatch but takes a free-form body
      * and returns the unwrapped envelope's `data`.
      */
-    async postRaw(endpoint, body) {
+    postRaw(endpoint, body) {
+        return this.requestRaw("POST", endpoint, body);
+    }
+    /**
+     * Generic request helper used by the chunked-session paths (POST) and the
+     * scan-detail backfill (GET). Mirrors the retry + Retry-After logic in
+     * sendBatch and returns the unwrapped envelope's `data`.
+     */
+    async requestRaw(method, endpoint, body) {
         const url = `${this.apiUrl.replace(/\/+$/, "")}${endpoint}`;
         let lastError;
         // Delay BEFORE the next attempt — set by the previous iteration. We
@@ -30652,15 +30853,17 @@ class ComplianceApiClient {
                 nextDelayMs = 0;
             }
             try {
+                const headers = {
+                    Authorization: `Bearer ${this.apiKey}`,
+                    "x-api-version": "v1",
+                    "User-Agent": "prodcycle/actions/compliance",
+                };
+                if (body !== undefined)
+                    headers["Content-Type"] = "application/json";
                 const response = await fetch(url, {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json",
-                        Authorization: `Bearer ${this.apiKey}`,
-                        "x-api-version": "v1",
-                        "User-Agent": "prodcycle/actions/compliance",
-                    },
-                    body: JSON.stringify(body),
+                    method,
+                    headers,
+                    ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
                     signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
                 });
                 if (!response.ok) {
@@ -30981,6 +31184,30 @@ exports.PayloadTooLargeError = PayloadTooLargeError;
  * - Maps `line` → `startLine` (API uses `line`, action uses `startLine`)
  * - Maps `controlId` → `ruleId` when `ruleId` is absent (API doesn't return `ruleId`)
  */
+/**
+ * Build a complete `ValidateSummary` from a possibly-partial one returned by
+ * the chunked `/complete` endpoint (which may only carry `total` + `bySeverity`).
+ * Missing counts and the framework breakdown are recomputed from the findings
+ * so downstream rendering has a consistent shape.
+ */
+function completeSummary(partial, findings) {
+    const bySeverity = { ...(partial?.bySeverity ?? {}) };
+    const byFramework = { ...(partial?.byFramework ?? {}) };
+    if (Object.keys(bySeverity).length === 0) {
+        for (const f of findings) {
+            bySeverity[f.severity] = (bySeverity[f.severity] || 0) + 1;
+        }
+    }
+    if (Object.keys(byFramework).length === 0) {
+        for (const f of findings) {
+            byFramework[f.framework] = (byFramework[f.framework] || 0) + 1;
+        }
+    }
+    const total = partial?.total ?? findings.length;
+    const failed = partial?.failed ?? findings.filter((f) => !f.advisory).length;
+    const passed = partial?.passed ?? Math.max(0, total - failed);
+    return { total, passed, failed, bySeverity, byFramework };
+}
 function normalizeFindings(response) {
     response.findings = response.findings.map((f) => ({
         ...f,
@@ -31327,7 +31554,10 @@ function filterFindingsToDiff(result, files, failOn) {
         byFramework[f.framework] = (byFramework[f.framework] || 0) + 1;
     }
     const failOnSet = new Set(failOn.map((s) => s.toLowerCase()));
-    const hasFailure = filtered.some((f) => failOnSet.has(f.severity.toLowerCase()));
+    // Advisory findings are informational — they never fail the check, matching
+    // how the API computes its own verdict (advisory is excluded from `failed`).
+    const blocking = filtered.filter((f) => !f.advisory && failOnSet.has(f.severity.toLowerCase()));
+    const hasFailure = blocking.length > 0;
     return {
         ...result,
         findings: filtered,
@@ -31335,8 +31565,8 @@ function filterFindingsToDiff(result, files, failOn) {
         passed: !hasFailure,
         summary: {
             total: filtered.length,
-            passed: 0,
-            failed: filtered.length,
+            passed: filtered.length - blocking.length,
+            failed: blocking.length,
             bySeverity,
             byFramework,
         },
@@ -31369,6 +31599,159 @@ async function collectAllFiles(repoRoot, include, exclude) {
         return [];
     }
     return readFileContents(filteredPaths, repoRoot);
+}
+
+
+/***/ }),
+
+/***/ 4171:
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
+
+"use strict";
+
+// =============================================================================
+// ProdCycle Compliance Code Scanner: GitHub identity resolution
+// =============================================================================
+//
+// Decides *who* leaves the PR comments and reviews.
+//
+// GitHub attributes every comment to whoever owns the token that posts it.
+// The built-in `GITHUB_TOKEN` is always `github-actions[bot]`. To have the
+// comments authored by the ProdCycle GitHub App (`prodcycle[bot]`, with the
+// ProdCycle name + avatar) we need a short-lived *installation token* scoped
+// to this repo.
+//
+// We can't ship the App's private key in the action (it's ProdCycle's signing
+// secret), so instead we ask the ProdCycle backend to mint one for us: the
+// `pc_` API key already identifies the workspace, and the backend knows which
+// App installation maps to it (`getInstallationAccessToken(organizationId)`).
+//
+//   POST {apiUrl}/v1/github/installation-token   { owner, repo }
+//   → { status: "success", data: { token, expiresAt } }
+//
+// If that endpoint is unavailable (older backend, App not installed, network
+// error) we transparently fall back to `GITHUB_TOKEN` so the action keeps
+// working — just authored by `github-actions[bot]` instead of `prodcycle[bot]`.
+// =============================================================================
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.resolveGitHubAuth = resolveGitHubAuth;
+const core = __importStar(__nccwpck_require__(6966));
+const github = __importStar(__nccwpck_require__(4903));
+const APP_TOKEN_TIMEOUT_MS = 15_000;
+/**
+ * Resolve the octokit client used for all PR comment / review / thread-resolve
+ * calls, preferring the ProdCycle App identity.
+ *
+ * - `auto` (default): try the App token, fall back to GITHUB_TOKEN.
+ * - `app`: require the App token; warn + fall back if it can't be obtained.
+ * - `github-token`: skip the App entirely (always github-actions[bot]).
+ *
+ * Returns `null` only when no usable token exists at all (no App token AND no
+ * github-token) — callers should treat that as "skip PR interactions".
+ */
+async function resolveGitHubAuth(apiUrl, apiKey, mode) {
+    const fallbackToken = core.getInput("github-token") || process.env.GITHUB_TOKEN || "";
+    if (mode !== "github-token") {
+        const appToken = await mintProdcycleAppToken(apiUrl, apiKey);
+        if (appToken) {
+            core.info("PR comments will be posted as prodcycle[bot] (ProdCycle GitHub App).");
+            return {
+                octokit: github.getOctokit(appToken),
+                token: appToken,
+                identity: "prodcycle-app",
+            };
+        }
+        if (mode === "app") {
+            core.warning("comment-identity=app but a ProdCycle App installation token could not " +
+                "be obtained (is the ProdCycle GitHub App installed on this repo?). " +
+                "Falling back to GITHUB_TOKEN — comments will be authored by github-actions[bot].");
+        }
+        else {
+            core.info("ProdCycle App token unavailable; posting as github-actions[bot]. " +
+                "Install the ProdCycle GitHub App to have comments authored by prodcycle[bot].");
+        }
+    }
+    if (!fallbackToken)
+        return null;
+    return {
+        octokit: github.getOctokit(fallbackToken),
+        token: fallbackToken,
+        identity: "github-actions",
+    };
+}
+/**
+ * Ask the ProdCycle backend for a repo-scoped GitHub App installation token.
+ * Returns the token string, or `null` on any failure (the caller falls back
+ * to GITHUB_TOKEN). Failures are intentionally non-fatal and only logged at
+ * debug level — a missing endpoint is an expected state, not an error.
+ */
+async function mintProdcycleAppToken(apiUrl, apiKey) {
+    const { owner, repo } = github.context.repo;
+    if (!owner || !repo)
+        return null;
+    const url = `${apiUrl.replace(/\/+$/, "")}/v1/github/installation-token`;
+    try {
+        const response = await fetch(url, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${apiKey}`,
+                "x-api-version": "v1",
+                "User-Agent": "prodcycle/actions/compliance",
+            },
+            body: JSON.stringify({ owner, repo }),
+            signal: AbortSignal.timeout(APP_TOKEN_TIMEOUT_MS),
+        });
+        if (!response.ok) {
+            core.debug(`installation-token endpoint returned ${response.status}; using GITHUB_TOKEN.`);
+            return null;
+        }
+        const envelope = (await response.json());
+        const token = envelope?.data?.token ?? envelope?.data?.installationToken;
+        if (typeof token === "string" && token.length > 0) {
+            core.setSecret(token);
+            return token;
+        }
+        core.debug("installation-token response had no token field; using GITHUB_TOKEN.");
+        return null;
+    }
+    catch (err) {
+        core.debug(`installation-token request failed (${err instanceof Error ? err.message : String(err)}); using GITHUB_TOKEN.`);
+        return null;
+    }
 }
 
 
@@ -31430,6 +31813,7 @@ const github = __importStar(__nccwpck_require__(4903));
 const diff_1 = __nccwpck_require__(2371);
 const api_client_1 = __nccwpck_require__(3140);
 const annotate_1 = __nccwpck_require__(2912);
+const github_1 = __nccwpck_require__(4171);
 function parseInputs() {
     const apiKey = core.getInput("api-key", { required: true });
     if (!apiKey.startsWith("pc_")) {
@@ -31442,6 +31826,10 @@ function parseInputs() {
     const annotate = core.getBooleanInput("annotate");
     const rawReviewEvent = core.getInput("review-event").trim().toLowerCase();
     const reviewEvent = resolveReviewEvent(rawReviewEvent, annotate);
+    const rawIdentity = (core.getInput("comment-identity") || "auto").trim().toLowerCase();
+    if (!["auto", "app", "github-token"].includes(rawIdentity)) {
+        throw new Error(`Invalid comment-identity "${rawIdentity}". Must be one of: auto, app, github-token.`);
+    }
     return {
         apiKey,
         apiUrl: core.getInput("api-url") || "https://api.prodcycle.com",
@@ -31455,6 +31843,7 @@ function parseInputs() {
         comment: core.getBooleanInput("comment"),
         reviewEvent,
         excludeAcceptedRisk: core.getBooleanInput("exclude-accepted-risk"),
+        commentIdentity: rawIdentity,
     };
 }
 /**
@@ -31564,30 +31953,52 @@ async function run() {
     if (inputs.annotate && result.findings.length > 0) {
         (0, annotate_1.createAnnotations)(result.findings);
     }
-    // ── 6. Post PR review with inline comments ──
-    if (inputs.reviewEvent !== "none" &&
-        context.payload.pull_request &&
-        result.findings.length > 0) {
+    // ── 6. Resolve who posts the comments (prodcycle[bot] vs github-actions[bot]) ──
+    //
+    // Resolved once and reused for review comments, the summary comment, and
+    // thread resolution — only when there's PR work that needs a token.
+    const isPullRequest = Boolean(context.payload.pull_request);
+    const willReview = inputs.reviewEvent !== "none" && isPullRequest;
+    const auth = isPullRequest && (willReview || inputs.comment)
+        ? await (0, github_1.resolveGitHubAuth)(inputs.apiUrl, inputs.apiKey, inputs.commentIdentity)
+        : null;
+    const postOptions = auth
+        ? { octokit: auth.octokit, identity: auth.identity }
+        : {};
+    // ── 7. Post PR review with inline comments ──
+    if (willReview && inputs.reviewEvent !== "none" && result.findings.length > 0) {
         try {
             const resolvedEvent = resolveReviewEventForPass(inputs.reviewEvent, result.passed);
-            await (0, annotate_1.postReviewComments)(result.findings, resolvedEvent);
+            await (0, annotate_1.postReviewComments)(result.findings, resolvedEvent, postOptions);
         }
         catch (err) {
             core.warning(`Failed to post PR review comments: ${err instanceof Error ? err.message : String(err)}`);
         }
     }
-    // ── 7. Post PR summary comment ──
-    if (inputs.comment && context.payload.pull_request) {
+    // ── 7b. Resolve threads whose findings have been fixed ──
+    //
+    // Runs whenever reviews are enabled — including when there are zero findings
+    // left (the all-fixed case), which is exactly when stale threads should close.
+    if (willReview) {
         try {
-            await (0, annotate_1.postSummaryComment)(result.findings, result.summary, result.scanId, result.passed, inputs.apiUrl);
+            await (0, annotate_1.resolveFixedReviewThreads)(result.findings, postOptions);
+        }
+        catch (err) {
+            core.warning(`Failed to resolve fixed review threads: ${err instanceof Error ? err.message : String(err)}`);
+        }
+    }
+    // ── 8. Post PR summary comment ──
+    if (inputs.comment && isPullRequest) {
+        try {
+            await (0, annotate_1.postSummaryComment)(result.findings, result.summary, result.scanId, result.passed, postOptions);
         }
         catch (err) {
             core.warning(`Failed to post PR comment: ${err instanceof Error ? err.message : String(err)}`);
         }
     }
-    // ── 8. Write job summary ──
+    // ── 9. Write job summary ──
     (0, annotate_1.writeJobSummary)(result.summary, result.scanId, result.passed, files.length);
-    // ── 9. Fail the action if scan did not pass ──
+    // ── 10. Fail the action if scan did not pass ──
     if (!result.passed) {
         core.setFailed(`Compliance check failed: ${result.findingsCount} finding(s) detected. See annotations for details.`);
     }

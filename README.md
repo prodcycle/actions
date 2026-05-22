@@ -83,6 +83,7 @@ When run on a `push` event (e.g., merge to `main`):
 | `comment`            | No       | `true`                      | Post a summary comment on the PR                                         |
 | `review-event`       | No       | *(empty — see below)*        | PR review event: `auto` / `comment` / `request-changes` / `none`          |
 | `exclude-accepted-risk` | No   | `true`                      | Skip findings that have been marked as accepted risk in the ProdCycle platform. |
+| `comment-identity`   | No       | `auto`                      | Who authors PR comments: `auto` (prodcycle[bot] when the App is installed, else github-actions[bot]), `app` (require the App), `github-token`. |
 
 ### Outputs
 
@@ -92,6 +93,18 @@ When run on a `push` event (e.g., merge to `main`):
 | `findings-count` | Total number of findings                          |
 | `scan-id`        | ProdCycle scan ID for linking to the dashboard    |
 | `summary`        | JSON summary of results by severity and framework |
+
+### How comments appear on your PR
+
+The scanner leaves three kinds of feedback, all branded as **ProdCycle Compliance**:
+
+- **Inline review comments** on the exact lines a finding was detected, each with the rule, severity, message, and remediation.
+- A single **summary comment** (updated in place on each run, never duplicated) with the severity and framework breakdown.
+- Inline workflow **annotations** on the diff (via `annotate`).
+
+**Posting as `prodcycle[bot]`.** With `comment-identity: auto` (the default), the action asks the ProdCycle backend for a short-lived token from the [ProdCycle GitHub App](https://github.com/apps/prodcycle) so comments are authored by **`prodcycle[bot]`** with the ProdCycle name and avatar. This requires the ProdCycle GitHub App to be installed on the repository. If it isn't (or the backend is unreachable), the action transparently falls back to the built-in `GITHUB_TOKEN` and posts as `github-actions[bot]` — the comment content is identical, only the author differs. Set `comment-identity: github-token` to always use `github-actions[bot]`, or `app` to require the App identity.
+
+**Auto-resolving fixed findings.** When a contributor pushes a fix and the finding disappears from the next scan, the action posts a brief "✅ Resolved by ProdCycle" reply and **marks that review thread resolved**. Only threads ProdCycle authored are ever touched — human and other-bot threads are left alone. This needs `pull-requests: write` on the token (already in the Quick start workflow).
 
 ### Examples
 

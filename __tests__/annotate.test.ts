@@ -35,6 +35,8 @@ const mockListFiles = vi.fn().mockResolvedValue({
 const mockListComments = vi.fn().mockResolvedValue({ data: [] });
 const mockCreateComment = vi.fn();
 const mockUpdateComment = vi.fn();
+const mockCreateReply = vi.fn().mockResolvedValue({ data: {} });
+const mockGraphql = vi.fn();
 
 const diffFiles = [
   {
@@ -69,13 +71,14 @@ vi.mock("@actions/github", () => ({
   },
   getOctokit: vi.fn(() => ({
     rest: {
-      pulls: { createReview: mockCreateReview, createReviewComment: mockCreateReviewComment, listFiles: mockListFiles, listReviewComments: mockListReviewComments },
+      pulls: { createReview: mockCreateReview, createReviewComment: mockCreateReviewComment, listFiles: mockListFiles, listReviewComments: mockListReviewComments, createReplyForReviewComment: mockCreateReply },
       issues: {
         listComments: mockListComments,
         createComment: mockCreateComment,
         updateComment: mockUpdateComment,
       },
     },
+    graphql: mockGraphql,
     paginate: mockPaginate,
   })),
 }));
@@ -482,6 +485,116 @@ describe("annotate", () => {
       // Only the SOC2 finding should be posted
       expect(call.comments).toHaveLength(1);
       expect(call.comments[0].path).toBe("src/db.ts");
+    });
+  });
+
+  describe("createAnnotations advisory handling", () => {
+    it("renders advisory findings as a notice regardless of severity", async () => {
+      const { createAnnotations } = await import("../src/annotate");
+
+      createAnnotations([makeFinding({ severity: "critical", advisory: true })]);
+
+      expect(core.notice).toHaveBeenCalledOnce();
+      expect(core.error).not.toHaveBeenCalled();
+      const title = vi.mocked(core.notice).mock.calls[0][1]?.title;
+      expect(title).toContain("(advisory)");
+    });
+  });
+
+  describe("resolveFixedReviewThreads", () => {
+    function threadPage(nodes: unknown[]) {
+      return {
+        repository: {
+          pullRequest: {
+            reviewThreads: {
+              pageInfo: { hasNextPage: false, endCursor: null },
+              nodes,
+            },
+          },
+        },
+      };
+    }
+
+    it("resolves ProdCycle threads whose finding is no longer present", async () => {
+      const { resolveFixedReviewThreads } = await import("../src/annotate");
+
+      mockGraphql.mockResolvedValueOnce(
+        threadPage([
+          {
+            id: "THREAD_FIXED",
+            isResolved: false,
+            path: "src/auth.ts",
+            comments: {
+              nodes: [
+                { body: "<!-- prodcycle-rule:HIPAA-164.312-a1 -->\nMissing encryption", databaseId: 111 },
+              ],
+            },
+          },
+        ]),
+      );
+
+      // Current scan returns no findings → the thread should be resolved.
+      await resolveFixedReviewThreads([]);
+
+      // Reply posted, then the thread resolved via a second graphql call (mutation)
+      expect(mockCreateReply).toHaveBeenCalledOnce();
+      expect(mockCreateReply.mock.calls[0][0].comment_id).toBe(111);
+      expect(mockGraphql).toHaveBeenCalledTimes(2);
+      expect(mockGraphql.mock.calls[1][1]).toEqual({ id: "THREAD_FIXED" });
+    });
+
+    it("keeps threads open whose finding is still present", async () => {
+      const { resolveFixedReviewThreads } = await import("../src/annotate");
+
+      mockGraphql.mockResolvedValueOnce(
+        threadPage([
+          {
+            id: "THREAD_STILL_OPEN",
+            isResolved: false,
+            path: "src/auth.ts",
+            comments: {
+              nodes: [
+                { body: "<!-- prodcycle-rule:HIPAA-164.312-a1 -->\nMissing encryption", databaseId: 222 },
+              ],
+            },
+          },
+        ]),
+      );
+
+      // Finding still flagged at src/auth.ts with the same ruleId.
+      await resolveFixedReviewThreads([makeFinding()]);
+
+      expect(mockCreateReply).not.toHaveBeenCalled();
+      // Only the query ran — no resolve mutation.
+      expect(mockGraphql).toHaveBeenCalledTimes(1);
+    });
+
+    it("never touches threads it did not author and already-resolved threads", async () => {
+      const { resolveFixedReviewThreads } = await import("../src/annotate");
+
+      mockGraphql.mockResolvedValueOnce(
+        threadPage([
+          {
+            id: "HUMAN_THREAD",
+            isResolved: false,
+            path: "src/auth.ts",
+            comments: { nodes: [{ body: "looks good to me", databaseId: 1 }] },
+          },
+          {
+            id: "ALREADY_RESOLVED",
+            isResolved: true,
+            path: "src/auth.ts",
+            comments: {
+              nodes: [{ body: "<!-- prodcycle-rule:SOC2-CC6.1 -->\nfixed", databaseId: 2 }],
+            },
+          },
+        ]),
+      );
+
+      await resolveFixedReviewThreads([]);
+
+      expect(mockCreateReply).not.toHaveBeenCalled();
+      expect(mockGraphql).toHaveBeenCalledTimes(1); // query only
     });
   });
 });

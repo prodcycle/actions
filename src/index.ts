@@ -18,8 +18,10 @@ import {
   createAnnotations,
   postReviewComments,
   postSummaryComment,
+  resolveFixedReviewThreads,
   writeJobSummary,
 } from "./annotate";
+import { resolveGitHubAuth } from "./github";
 import type { ActionInputs } from "./types";
 
 function parseInputs(): ActionInputs {
@@ -39,6 +41,13 @@ function parseInputs(): ActionInputs {
   const rawReviewEvent = core.getInput("review-event").trim().toLowerCase();
   const reviewEvent = resolveReviewEvent(rawReviewEvent, annotate);
 
+  const rawIdentity = (core.getInput("comment-identity") || "auto").trim().toLowerCase();
+  if (!["auto", "app", "github-token"].includes(rawIdentity)) {
+    throw new Error(
+      `Invalid comment-identity "${rawIdentity}". Must be one of: auto, app, github-token.`,
+    );
+  }
+
   return {
     apiKey,
     apiUrl: core.getInput("api-url") || "https://api.prodcycle.com",
@@ -52,6 +61,7 @@ function parseInputs(): ActionInputs {
     comment: core.getBooleanInput("comment"),
     reviewEvent,
     excludeAcceptedRisk: core.getBooleanInput("exclude-accepted-risk"),
+    commentIdentity: rawIdentity as ActionInputs["commentIdentity"],
   };
 }
 
@@ -198,19 +208,29 @@ async function run(): Promise<void> {
     createAnnotations(result.findings);
   }
 
-  // ── 6. Post PR review with inline comments ──
+  // ── 6. Resolve who posts the comments (prodcycle[bot] vs github-actions[bot]) ──
+  //
+  // Resolved once and reused for review comments, the summary comment, and
+  // thread resolution — only when there's PR work that needs a token.
+  const isPullRequest = Boolean(context.payload.pull_request);
+  const willReview = inputs.reviewEvent !== "none" && isPullRequest;
+  const auth =
+    isPullRequest && (willReview || inputs.comment)
+      ? await resolveGitHubAuth(inputs.apiUrl, inputs.apiKey, inputs.commentIdentity)
+      : null;
+  const postOptions = auth
+    ? { octokit: auth.octokit, identity: auth.identity }
+    : {};
 
-  if (
-    inputs.reviewEvent !== "none" &&
-    context.payload.pull_request &&
-    result.findings.length > 0
-  ) {
+  // ── 7. Post PR review with inline comments ──
+
+  if (willReview && inputs.reviewEvent !== "none" && result.findings.length > 0) {
     try {
       const resolvedEvent = resolveReviewEventForPass(
         inputs.reviewEvent,
         result.passed,
       );
-      await postReviewComments(result.findings, resolvedEvent);
+      await postReviewComments(result.findings, resolvedEvent, postOptions);
     } catch (err) {
       core.warning(
         `Failed to post PR review comments: ${err instanceof Error ? err.message : String(err)}`,
@@ -218,16 +238,30 @@ async function run(): Promise<void> {
     }
   }
 
-  // ── 7. Post PR summary comment ──
+  // ── 7b. Resolve threads whose findings have been fixed ──
+  //
+  // Runs whenever reviews are enabled — including when there are zero findings
+  // left (the all-fixed case), which is exactly when stale threads should close.
+  if (willReview) {
+    try {
+      await resolveFixedReviewThreads(result.findings, postOptions);
+    } catch (err) {
+      core.warning(
+        `Failed to resolve fixed review threads: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
 
-  if (inputs.comment && context.payload.pull_request) {
+  // ── 8. Post PR summary comment ──
+
+  if (inputs.comment && isPullRequest) {
     try {
       await postSummaryComment(
         result.findings,
         result.summary,
         result.scanId,
         result.passed,
-        inputs.apiUrl,
+        postOptions,
       );
     } catch (err) {
       core.warning(
@@ -236,11 +270,11 @@ async function run(): Promise<void> {
     }
   }
 
-  // ── 8. Write job summary ──
+  // ── 9. Write job summary ──
 
   writeJobSummary(result.summary, result.scanId, result.passed, files.length);
 
-  // ── 9. Fail the action if scan did not pass ──
+  // ── 10. Fail the action if scan did not pass ──
 
   if (!result.passed) {
     core.setFailed(

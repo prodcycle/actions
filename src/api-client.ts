@@ -6,12 +6,27 @@ import * as core from "@actions/core";
 import type {
   ValidateRequest,
   ValidateResponse,
+  ValidateSummary,
+  ScanFinding,
   ApiResponse,
   ChangedFile,
 } from "./types";
 
-const REQUEST_TIMEOUT_MS = 120_000; // 2 minutes
-const MAX_RETRIES = 2;
+/**
+ * Per-request timeout and retry budget. Chunked-session scans on large
+ * monorepos can take tens of seconds per request, so we mirror the
+ * ProdCycle CLI's longer defaults (300s timeout, 3 retries) rather than the
+ * old 120s/2 — the CLI hardened these after GA load testing. Both are
+ * overridable via env for operators who want a different budget in CI.
+ */
+function envInt(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (!raw) return fallback;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback;
+}
+const REQUEST_TIMEOUT_MS = envInt("COMPLIANCE_REQUEST_TIMEOUT_MS", 300_000); // 5 min
+const MAX_RETRIES = envInt("COMPLIANCE_MAX_RETRIES", 3);
 const RETRY_DELAY_MS = 2_000;
 
 /**
@@ -21,12 +36,6 @@ const RETRY_DELAY_MS = 2_000;
  * timeout. Configurable via `COMPLIANCE_MAX_RETRY_AFTER_MS` for operators
  * who want a different ceiling in their CI.
  */
-function envInt(name: string, fallback: number): number {
-  const raw = process.env[name];
-  if (!raw) return fallback;
-  const parsed = Number(raw);
-  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback;
-}
 const MAX_RETRY_AFTER_MS = envInt("COMPLIANCE_MAX_RETRY_AFTER_MS", 60_000);
 
 /**
@@ -142,11 +151,64 @@ export class ComplianceApiClient {
     }
 
     core.info(`Finalizing scan ${session.scanId}...`);
-    const finalResult = await this.postRaw<ValidateResponse>(
+    const finalResult = await this.postRaw<{
+      scanId: string;
+      passed: boolean;
+      findingsCount: number;
+      findings?: ScanFinding[];
+      summary?: Partial<ValidateSummary>;
+      prompt?: string;
+    }>(
       `/v1/compliance/scans/${encodeURIComponent(session.scanId)}/complete`,
       {},
     );
-    return normalizeFindings({ ...finalResult, scanId: session.scanId });
+
+    // The `/complete` response carries the verdict + counts but NOT the full
+    // findings array (or a complete summary). Backfill them from the scan
+    // detail endpoint — mirrors the ProdCycle CLI, and avoids crashing on an
+    // absent `findings` field. The race where the detail isn't materialized
+    // yet is rare; we degrade to an empty findings list if it's missing.
+    let findings = finalResult.findings ?? [];
+    let summary = finalResult.summary;
+    if (findings.length === 0 && finalResult.findingsCount > 0) {
+      const detail = await this.fetchScanDetail(session.scanId);
+      if (detail) {
+        findings = detail.findings ?? findings;
+        summary = (detail.summary as Partial<ValidateSummary>) ?? summary;
+      }
+    }
+
+    return normalizeFindings({
+      passed: finalResult.passed,
+      findingsCount: finalResult.findingsCount,
+      findings,
+      summary: completeSummary(summary, findings),
+      scanId: session.scanId,
+      prompt: finalResult.prompt,
+    });
+  }
+
+  /**
+   * GET /v1/compliance/scans/:id — used to backfill the findings array after a
+   * chunked session, since `/complete` only returns the verdict + counts.
+   * Returns `null` (non-fatal) if the detail can't be fetched.
+   */
+  private async fetchScanDetail(
+    scanId: string,
+  ): Promise<{ findings?: ScanFinding[]; summary?: unknown } | null> {
+    try {
+      return await this.requestRaw<{ findings?: ScanFinding[]; summary?: unknown }>(
+        "GET",
+        `/v1/compliance/scans/${encodeURIComponent(scanId)}`,
+      );
+    } catch (err) {
+      core.warning(
+        `Could not fetch scan detail to backfill findings: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+      return null;
+    }
   }
 
   private buildOpenSessionBody(options?: {
@@ -188,9 +250,22 @@ export class ComplianceApiClient {
    * retry + Retry-After logic in sendBatch but takes a free-form body
    * and returns the unwrapped envelope's `data`.
    */
-  private async postRaw<T>(
+  private postRaw<T>(
     endpoint: string,
     body: Record<string, unknown>,
+  ): Promise<T> {
+    return this.requestRaw<T>("POST", endpoint, body);
+  }
+
+  /**
+   * Generic request helper used by the chunked-session paths (POST) and the
+   * scan-detail backfill (GET). Mirrors the retry + Retry-After logic in
+   * sendBatch and returns the unwrapped envelope's `data`.
+   */
+  private async requestRaw<T>(
+    method: "GET" | "POST",
+    endpoint: string,
+    body?: Record<string, unknown>,
   ): Promise<T> {
     const url = `${this.apiUrl.replace(/\/+$/, "")}${endpoint}`;
     let lastError: Error | undefined;
@@ -207,15 +282,17 @@ export class ComplianceApiClient {
         nextDelayMs = 0;
       }
       try {
+        const headers: Record<string, string> = {
+          Authorization: `Bearer ${this.apiKey}`,
+          "x-api-version": "v1",
+          "User-Agent": "prodcycle/actions/compliance",
+        };
+        if (body !== undefined) headers["Content-Type"] = "application/json";
+
         const response = await fetch(url, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${this.apiKey}`,
-            "x-api-version": "v1",
-            "User-Agent": "prodcycle/actions/compliance",
-          },
-          body: JSON.stringify(body),
+          method,
+          headers,
+          ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
           signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
         });
 
@@ -631,6 +708,37 @@ export class PayloadTooLargeError extends Error {
  * - Maps `line` → `startLine` (API uses `line`, action uses `startLine`)
  * - Maps `controlId` → `ruleId` when `ruleId` is absent (API doesn't return `ruleId`)
  */
+/**
+ * Build a complete `ValidateSummary` from a possibly-partial one returned by
+ * the chunked `/complete` endpoint (which may only carry `total` + `bySeverity`).
+ * Missing counts and the framework breakdown are recomputed from the findings
+ * so downstream rendering has a consistent shape.
+ */
+function completeSummary(
+  partial: Partial<ValidateSummary> | undefined,
+  findings: ScanFinding[],
+): ValidateSummary {
+  const bySeverity: Record<string, number> = { ...(partial?.bySeverity ?? {}) };
+  const byFramework: Record<string, number> = { ...(partial?.byFramework ?? {}) };
+
+  if (Object.keys(bySeverity).length === 0) {
+    for (const f of findings) {
+      bySeverity[f.severity] = (bySeverity[f.severity] || 0) + 1;
+    }
+  }
+  if (Object.keys(byFramework).length === 0) {
+    for (const f of findings) {
+      byFramework[f.framework] = (byFramework[f.framework] || 0) + 1;
+    }
+  }
+
+  const total = partial?.total ?? findings.length;
+  const failed = partial?.failed ?? findings.filter((f) => !f.advisory).length;
+  const passed = partial?.passed ?? Math.max(0, total - failed);
+
+  return { total, passed, failed, bySeverity, byFramework };
+}
+
 function normalizeFindings(response: ValidateResponse): ValidateResponse {
   response.findings = response.findings.map((f) => ({
     ...f,

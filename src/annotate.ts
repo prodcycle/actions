@@ -5,6 +5,7 @@
 import * as core from "@actions/core";
 import * as github from "@actions/github";
 import type { ScanFinding, ValidateSummary } from "./types";
+import type { CommentIdentity } from "./github";
 
 const SEVERITY_ICONS: Record<string, string> = {
   critical: "🔴",
@@ -20,14 +21,60 @@ const SEVERITY_LEVEL: Record<string, "error" | "warning" | "notice"> = {
   low: "notice",
 };
 
+const PRODCYCLE_APP_URL = "https://app.prodcycle.com";
+const PRODCYCLE_DOCS_URL = "https://docs.prodcycle.com/compliance";
+
+/** Options shared by the comment-posting helpers. */
+export interface PostOptions {
+  /**
+   * Pre-resolved octokit (typically the ProdCycle App identity from
+   * resolveGitHubAuth). When omitted, falls back to the github-token input.
+   */
+  octokit?: ReturnType<typeof github.getOctokit>;
+  /** Who the comment is authored by — drives the body's branding footer. */
+  identity?: CommentIdentity;
+}
+
+type Octokit = ReturnType<typeof github.getOctokit>;
+
+/**
+ * Use the caller-provided octokit (App identity) when present, otherwise build
+ * one from the github-token input. Returns null when no token is available.
+ */
+function resolveOctokit(provided?: Octokit): Octokit | null {
+  if (provided) return provided;
+  const token = core.getInput("github-token") || process.env.GITHUB_TOKEN;
+  if (!token) return null;
+  return github.getOctokit(token);
+}
+
+/**
+ * Branding footer appended to comment bodies. When ProdCycle posts as its own
+ * App (`prodcycle[bot]`), the author already carries the brand, so the footer
+ * stays light; with github-actions[bot] we make the ProdCycle attribution
+ * explicit so it's clear who left the comment.
+ */
+function brandFooter(identity: CommentIdentity | undefined, scanId: string): string {
+  const scan = scanId ? `Scan \`${scanId}\`` : "";
+  if (identity === "prodcycle-app") {
+    return `<sub>${scan ? scan + " · " : ""}[ProdCycle Compliance](${PRODCYCLE_APP_URL})</sub>`;
+  }
+  return `<sub>🛡️ Posted by [ProdCycle Compliance](${PRODCYCLE_APP_URL}) · [Docs](${PRODCYCLE_DOCS_URL})${scan ? " · " + scan : ""}</sub>`;
+}
+
 /**
  * Create GitHub annotations for each finding.
  * These appear inline on the PR diff view.
  */
 export function createAnnotations(findings: ScanFinding[]): void {
   for (const finding of findings) {
-    const level = SEVERITY_LEVEL[finding.severity] || "warning";
-    const title = `[${finding.severity.toUpperCase()}] ${finding.ruleId}`;
+    // Advisory findings are informational and never block — surface them as a
+    // notice regardless of severity, and label them so reviewers know they
+    // don't have to act on them to pass the check.
+    const level = finding.advisory
+      ? "notice"
+      : SEVERITY_LEVEL[finding.severity] || "warning";
+    const title = `[${finding.severity.toUpperCase()}]${finding.advisory ? " (advisory)" : ""} ${finding.ruleId}`;
     const message = [
       finding.message,
       "",
@@ -63,10 +110,10 @@ export async function postSummaryComment(
   summary: ValidateSummary,
   scanId: string,
   passed: boolean,
-  _apiUrl: string,
+  options: PostOptions = {},
 ): Promise<void> {
-  const token = core.getInput("github-token") || process.env.GITHUB_TOKEN;
-  if (!token) {
+  const octokit = resolveOctokit(options.octokit);
+  if (!octokit) {
     core.warning("No GitHub token available. Skipping PR comment. Set the 'github-token' input or ensure GITHUB_TOKEN is in the environment.");
     return;
   }
@@ -77,13 +124,12 @@ export async function postSummaryComment(
     return;
   }
 
-  const octokit = github.getOctokit(token);
   const prNumber = context.payload.pull_request.number;
   const { owner, repo } = context.repo;
 
   const headSha = context.payload.pull_request.head?.sha || "";
   const repoUrl = `https://github.com/${owner}/${repo}`;
-  const body = buildCommentBody(findings, summary, scanId, passed, repoUrl, headSha);
+  const body = buildCommentBody(findings, summary, scanId, passed, repoUrl, headSha, options.identity);
   const marker = "<!-- prodcycle-actions-compliance -->";
   const fullBody = `${marker}\n${body}`;
 
@@ -123,21 +169,23 @@ function buildCommentBody(
   passed: boolean,
   repoUrl: string,
   headSha: string,
+  identity?: CommentIdentity,
 ): string {
+  const footer = ["", "---", brandFooter(identity, scanId)];
+
   if (summary.total === 0) {
     const lines: string[] = [
-      "### ✅ Compliance Check Passed",
+      "### 🛡️ ProdCycle Compliance · ✅ Passed",
       "",
       "No compliance findings were detected in this PR's changed files.",
-      "",
-      `Scan ID: \`${scanId}\``,
+      ...footer,
     ];
     return lines.join("\n");
   }
 
   const status = passed
-    ? "### ✅ Compliance Check Passed"
-    : "### ❌ Compliance Check Failed";
+    ? "### 🛡️ ProdCycle Compliance · ✅ Passed"
+    : "### 🛡️ ProdCycle Compliance · ❌ Failed";
 
   const lines: string[] = [status, ""];
 
@@ -187,8 +235,9 @@ function buildCommentBody(
       } else {
         location = `\`${f.resourcePath}\``;
       }
+      const advisoryTag = f.advisory ? " _(advisory)_" : "";
       lines.push(
-        `- ${icon} **${f.ruleId}** in ${location}: ${f.message}`,
+        `- ${icon} **${f.ruleId}**${advisoryTag} in ${location}: ${f.message}`,
       );
       lines.push(`  - Remediation: ${f.remediation}`);
     }
@@ -200,11 +249,9 @@ function buildCommentBody(
 
     lines.push("");
     lines.push("</details>");
-    lines.push("");
   }
 
-  // Scan ID for reference (dashboard page coming soon)
-  lines.push(`Scan ID: \`${scanId}\``);
+  lines.push("", "---", brandFooter(identity, scanId));
 
   return lines.join("\n");
 }
@@ -217,9 +264,10 @@ function buildCommentBody(
 export async function postReviewComments(
   findings: ScanFinding[],
   reviewEvent: "COMMENT" | "REQUEST_CHANGES",
+  options: PostOptions = {},
 ): Promise<void> {
-  const token = core.getInput("github-token") || process.env.GITHUB_TOKEN;
-  if (!token) {
+  const octokit = resolveOctokit(options.octokit);
+  if (!octokit) {
     core.warning("No GitHub token available. Skipping PR review comments.");
     return;
   }
@@ -230,7 +278,6 @@ export async function postReviewComments(
     return;
   }
 
-  const octokit = github.getOctokit(token);
   const prNumber = context.payload.pull_request.number;
   const commitSha = context.payload.pull_request.head?.sha;
   const { owner, repo } = context.repo;
@@ -272,9 +319,10 @@ export async function postReviewComments(
 
     if (inDiff && fileRanges) {
       // Inline comment on the specific line(s)
+      const advisoryTag = f.advisory ? " _(advisory — non-blocking)_" : "";
       const body = [
         ruleMarker(f.ruleId),
-        `${icon} **[${f.severity.toUpperCase()}] ${f.ruleId}**`,
+        `${icon} **[${f.severity.toUpperCase()}] ${f.ruleId}**${advisoryTag}`,
         "",
         f.message,
         "",
@@ -321,9 +369,10 @@ export async function postReviewComments(
         : `L${f.startLine}`;
       const fileLink = `${repoUrl}/blob/${commitSha}/${f.resourcePath}#${lineFragment}`;
 
+      const advisoryTag = f.advisory ? " _(advisory — non-blocking)_" : "";
       const body = [
         ruleMarker(f.ruleId),
-        `${icon} **[${f.severity.toUpperCase()}] ${f.ruleId}** (line ${f.startLine}${f.endLine !== f.startLine ? `–${f.endLine}` : ""}) ([view](${fileLink}))`,
+        `${icon} **[${f.severity.toUpperCase()}] ${f.ruleId}**${advisoryTag} (line ${f.startLine}${f.endLine !== f.startLine ? `–${f.endLine}` : ""}) ([view](${fileLink}))`,
         "",
         f.message,
         "",
@@ -357,10 +406,11 @@ export async function postReviewComments(
   }
 
   const event = reviewEvent;
-  const reviewBody =
+  const reviewSummary =
     event === "COMMENT"
-      ? "✅ **ProdCycle Compliance Scan** — findings detected but within acceptable thresholds."
-      : "❌ **ProdCycle Compliance Scan** — compliance violations found that require attention.";
+      ? "🛡️ **ProdCycle Compliance** — findings detected but within acceptable thresholds."
+      : "🛡️ **ProdCycle Compliance** — compliance violations found that require attention.";
+  const reviewBody = `${reviewSummary}\n\n---\n${brandFooter(options.identity, "")}`;
 
   const inlineCount = comments.filter((c) => !c.subject_type).length;
   const fileCount = comments.filter((c) => c.subject_type === "file").length;
@@ -590,6 +640,181 @@ export function parseDiffHunks(patch: string): DiffRange[] {
   }
 
   return ranges;
+}
+
+/** A ProdCycle-authored review thread, keyed by the rule it was posted for. */
+interface ProdcycleThread {
+  /** GraphQL node id, needed for resolveReviewThread. */
+  id: string;
+  isResolved: boolean;
+  path: string;
+  ruleId: string;
+  /** REST databaseId of the first comment, for posting a reply. */
+  firstCommentId?: number;
+}
+
+/** Stable key matching a finding to the thread that reported it. */
+function threadKey(path: string, ruleId: string): string {
+  return `${path}::${ruleId}`;
+}
+
+/**
+ * Resolve ProdCycle review threads whose finding is no longer present.
+ *
+ * After a contributor pushes a fix, the finding disappears from the next scan.
+ * Without this, the original inline comment lingers as an unresolved thread
+ * forever. Here we walk the PR's review threads, keep only the ones ProdCycle
+ * authored (identified by the `<!-- prodcycle-rule:RULE_ID -->` marker), and
+ * for any whose `(path, ruleId)` is no longer in the current findings we post a
+ * short "resolved" reply and mark the thread resolved via GraphQL.
+ *
+ * Threads we didn't author (humans, other bots) are never touched. Requires the
+ * token to have `pull-requests: write`. All failures are non-fatal.
+ */
+export async function resolveFixedReviewThreads(
+  findings: ScanFinding[],
+  options: PostOptions = {},
+): Promise<void> {
+  const octokit = resolveOctokit(options.octokit);
+  if (!octokit) return;
+
+  const context = github.context;
+  if (!context.payload.pull_request) {
+    core.debug("Not a pull request event. Skipping thread resolution.");
+    return;
+  }
+
+  const prNumber = context.payload.pull_request.number;
+  const headSha = context.payload.pull_request.head?.sha || "";
+  const { owner, repo } = context.repo;
+
+  // (path::ruleId) still flagged by the current scan — these stay open.
+  const active = new Set<string>();
+  for (const f of findings) active.add(threadKey(f.resourcePath, f.ruleId));
+
+  let threads: ProdcycleThread[];
+  try {
+    threads = await fetchProdcycleReviewThreads(octokit, owner, repo, prNumber);
+  } catch (err) {
+    core.warning(
+      `Could not fetch review threads to resolve: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return;
+  }
+
+  const stale = threads.filter(
+    (t) => !t.isResolved && !active.has(threadKey(t.path, t.ruleId)),
+  );
+  if (stale.length === 0) {
+    core.debug("No fixed ProdCycle review threads to resolve.");
+    return;
+  }
+
+  const shortSha = headSha ? ` as of ${headSha.substring(0, 7)}` : "";
+  let resolved = 0;
+  for (const t of stale) {
+    try {
+      if (t.firstCommentId) {
+        await octokit.rest.pulls.createReplyForReviewComment({
+          owner,
+          repo,
+          pull_number: prNumber,
+          comment_id: t.firstCommentId,
+          body: `✅ Resolved by ProdCycle — \`${t.ruleId}\` is no longer detected${shortSha}.`,
+        });
+      }
+      await resolveReviewThread(octokit, t.id);
+      resolved++;
+    } catch (err) {
+      core.debug(
+        `Failed to resolve thread ${t.id} (${t.ruleId}): ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+
+  if (resolved > 0) {
+    core.info(
+      `Resolved ${resolved} ProdCycle review thread(s) whose findings are now fixed.`,
+    );
+  }
+}
+
+const REVIEW_THREADS_QUERY = `
+query($owner: String!, $repo: String!, $pr: Int!, $cursor: String) {
+  repository(owner: $owner, name: $repo) {
+    pullRequest(number: $pr) {
+      reviewThreads(first: 100, after: $cursor) {
+        pageInfo { hasNextPage endCursor }
+        nodes {
+          id
+          isResolved
+          path
+          comments(first: 1) { nodes { body databaseId } }
+        }
+      }
+    }
+  }
+}`;
+
+interface ReviewThreadsQueryResult {
+  repository: {
+    pullRequest: {
+      reviewThreads: {
+        pageInfo: { hasNextPage: boolean; endCursor: string | null };
+        nodes: Array<{
+          id: string;
+          isResolved: boolean;
+          path: string;
+          comments: { nodes: Array<{ body: string; databaseId: number }> };
+        }>;
+      };
+    };
+  };
+}
+
+/**
+ * Page through a PR's review threads and return only those ProdCycle authored,
+ * tagged with the ruleId parsed from their leading comment marker.
+ */
+async function fetchProdcycleReviewThreads(
+  octokit: Octokit,
+  owner: string,
+  repo: string,
+  prNumber: number,
+): Promise<ProdcycleThread[]> {
+  const out: ProdcycleThread[] = [];
+  let cursor: string | null = null;
+
+  for (;;) {
+    const data: ReviewThreadsQueryResult = await octokit.graphql(
+      REVIEW_THREADS_QUERY,
+      { owner, repo, pr: prNumber, cursor },
+    );
+    const conn = data.repository.pullRequest.reviewThreads;
+    for (const node of conn.nodes) {
+      const first = node.comments.nodes[0];
+      const ruleId = extractRuleIdFromBody(first?.body);
+      if (!ruleId) continue; // not a ProdCycle thread
+      out.push({
+        id: node.id,
+        isResolved: node.isResolved,
+        path: node.path,
+        ruleId,
+        firstCommentId: first?.databaseId,
+      });
+    }
+    if (!conn.pageInfo.hasNextPage) break;
+    cursor = conn.pageInfo.endCursor;
+  }
+
+  return out;
+}
+
+async function resolveReviewThread(octokit: Octokit, threadId: string): Promise<void> {
+  await octokit.graphql(
+    `mutation($id: ID!) { resolveReviewThread(input: { threadId: $id }) { thread { id } } }`,
+    { id: threadId },
+  );
 }
 
 /**

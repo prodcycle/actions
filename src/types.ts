@@ -20,6 +20,14 @@ export interface ActionInputs {
    */
   reviewEvent: "auto" | "comment" | "request-changes" | "none";
   excludeAcceptedRisk: boolean;
+  /**
+   * Who PR comments are authored by.
+   * - `auto`: post as prodcycle[bot] when the ProdCycle App token is
+   *   available, otherwise github-actions[bot].
+   * - `app`: require the ProdCycle App identity (warn + fall back if missing).
+   * - `github-token`: always github-actions[bot].
+   */
+  commentIdentity: "auto" | "app" | "github-token";
 }
 
 /** A single changed file with its content */
@@ -73,6 +81,12 @@ export interface ScanFinding {
   line?: number | null;
   message: string;
   remediation: string;
+  /**
+   * When true, the finding is informational and does NOT block the scan
+   * (the API excludes it from `summary.failed` and the pass/fail verdict).
+   * Surfaced as a notice, never as a blocking error / request-changes.
+   */
+  advisory?: boolean;
 }
 
 export interface ValidateSummary {

@@ -57,6 +57,10 @@ inputs:
     description: "GitHub token for PR comments and annotations. Defaults to the automatic GITHUB_TOKEN."
     required: false
     default: ${{ github.token }}
+  comment-identity:
+    description: "Who authors PR comments. 'auto' posts as prodcycle[bot] when the ProdCycle GitHub App is installed (falling back to github-actions[bot]), 'app' requires the App identity, 'github-token' always uses github-actions[bot]. Requires pull-requests: write permission to resolve threads."
+    required: false
+    default: "auto"
 
 outputs:
   passed:

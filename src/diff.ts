@@ -300,7 +300,12 @@ export function filterFindingsToDiff(
   }
 
   const failOnSet = new Set(failOn.map((s) => s.toLowerCase()));
-  const hasFailure = filtered.some((f) => failOnSet.has(f.severity.toLowerCase()));
+  // Advisory findings are informational — they never fail the check, matching
+  // how the API computes its own verdict (advisory is excluded from `failed`).
+  const blocking = filtered.filter(
+    (f) => !f.advisory && failOnSet.has(f.severity.toLowerCase()),
+  );
+  const hasFailure = blocking.length > 0;
 
   return {
     ...result,
@@ -309,8 +314,8 @@ export function filterFindingsToDiff(
     passed: !hasFailure,
     summary: {
       total: filtered.length,
-      passed: 0,
-      failed: filtered.length,
+      passed: filtered.length - blocking.length,
+      failed: blocking.length,
       bySeverity,
       byFramework,
     },
