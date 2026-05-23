@@ -725,7 +725,13 @@ describe("ComplianceApiClient", () => {
     const client = new ComplianceApiClient(mockApiUrl, mockApiKey);
     const result = await client.validate(
       [{ path: "main.tf", content: "x" }],
-      { frameworks: ["soc2"] },
+      {
+        frameworks: ["soc2"],
+        productId: "prod-uuid",
+        syncConfigId: "sync-uuid",
+        excludeResolved: true,
+        reconcile: false,
+      },
     );
 
     expect(fetchSpy).toHaveBeenCalledTimes(4);
@@ -741,17 +747,18 @@ describe("ComplianceApiClient", () => {
     expect(result.passed).toBe(true);
     expect(result.scanId).toBe("scan-chunked-99");
 
-    // Open-session body forwards frameworks but NOT the product-aware options
-    // (those would tie a partial scan to the product and trigger destructive
-    // reconcile on the backend until that path is supported).
+    // Open-session body forwards frameworks AND the product-aware options
+    // (productId/syncConfigId at the top level; excludeResolved + reconcile
+    // inside options). With reconcile=false, the backend detaches the row +
+    // skips reconciliation while still applying suppression filtering.
     const openBody = JSON.parse(
       (fetchSpy.mock.calls[1][1] as RequestInit).body as string,
     );
     expect(openBody.frameworks).toEqual(["soc2"]);
-    expect(openBody.product_id).toBeUndefined();
-    expect(openBody.sync_config_id).toBeUndefined();
-    expect(openBody.options?.exclude_resolved).toBeUndefined();
-    expect(openBody.options?.reconcile).toBeUndefined();
+    expect(openBody.product_id).toBe("prod-uuid");
+    expect(openBody.sync_config_id).toBe("sync-uuid");
+    expect(openBody.options.exclude_resolved).toBe(true);
+    expect(openBody.options.reconcile).toBe(false);
 
     // Chunk body has the file in path→content map shape
     const chunkBody = JSON.parse(

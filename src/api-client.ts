@@ -139,38 +139,9 @@ export class ComplianceApiClient {
       reconcile?: boolean;
     },
   ): Promise<ValidateResponse> {
-    // Explicit narrowing: the chunked-session open does NOT forward
-    // productId / syncConfigId / excludeResolved / reconcile. Doing so today
-    // would let the backend tie a partial scan to the product and then
-    // reconcile against it on /complete, wrongly resolving every finding in
-    // unchanged files. Until the backend honors `reconcile` on
-    // startScanSession + completeScanSession, suppression on this fallback
-    // path is a no-op. Surface that once so users know what to expect.
-    if (
-      options?.productId ||
-      options?.syncConfigId ||
-      options?.excludeResolved ||
-      options?.reconcile === false
-    ) {
-      core.info(
-        "Note: this large payload triggered the chunked-session fallback. " +
-          "Accepted-risk and resolved-finding suppression do not yet apply on " +
-          "the chunked path; results may include findings you've already " +
-          "marked Accepted Risk or Resolved in ProdCycle. Reduce the PR size " +
-          "or wait for the chunked-path follow-up to land.",
-      );
-    }
-    const openBody = this.buildOpenSessionBody({
-      ...(options?.frameworks && { frameworks: options.frameworks }),
-      ...(options?.severityThreshold && { severityThreshold: options.severityThreshold }),
-      ...(options?.failOn && { failOn: options.failOn }),
-      ...(options?.excludeAcceptedRisk !== undefined && {
-        excludeAcceptedRisk: options.excludeAcceptedRisk,
-      }),
-    });
     const session = await this.postRaw<{ scanId: string }>(
       "/v1/compliance/scans",
-      openBody,
+      this.buildOpenSessionBody(options),
     );
     core.info(`Opened chunked compliance scan session: ${session.scanId}`);
 
@@ -251,10 +222,20 @@ export class ComplianceApiClient {
     severityThreshold?: string;
     failOn?: string[];
     excludeAcceptedRisk?: boolean;
+    excludeResolved?: boolean;
+    productId?: string;
+    syncConfigId?: string;
+    reconcile?: boolean;
   }): Record<string, unknown> {
     const body: Record<string, unknown> = {};
     if (options?.frameworks && options.frameworks.length > 0) {
       body.frameworks = options.frameworks;
+    }
+    if (options?.productId) {
+      body.product_id = options.productId;
+    }
+    if (options?.syncConfigId) {
+      body.sync_config_id = options.syncConfigId;
     }
     // Always send `options` with `include_prompt: true` so the chunked
     // path produces the same response shape (with remediation prompt) as
@@ -271,6 +252,16 @@ export class ComplianceApiClient {
     }
     if (options?.excludeAcceptedRisk !== undefined) {
       optionsBody.exclude_accepted_risk = options.excludeAcceptedRisk;
+    }
+    if (options?.excludeResolved !== undefined) {
+      optionsBody.exclude_resolved = options.excludeResolved;
+    }
+    // `reconcile: false` tells the server to treat this chunked session as a
+    // partial scan — filter by product suppressions but don't tie the row to
+    // the product or reconcile against it. The action sends this on diff PR
+    // scans so unchanged-file findings aren't wrongly marked resolved.
+    if (options?.reconcile !== undefined) {
+      optionsBody.reconcile = options.reconcile;
     }
     body.options = optionsBody;
     return body;
