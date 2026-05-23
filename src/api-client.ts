@@ -6,12 +6,27 @@ import * as core from "@actions/core";
 import type {
   ValidateRequest,
   ValidateResponse,
+  ValidateSummary,
+  ScanFinding,
   ApiResponse,
   ChangedFile,
 } from "./types";
 
-const REQUEST_TIMEOUT_MS = 120_000; // 2 minutes
-const MAX_RETRIES = 2;
+/**
+ * Per-request timeout and retry budget. Chunked-session scans on large
+ * monorepos can take tens of seconds per request, so we mirror the
+ * ProdCycle CLI's longer defaults (300s timeout, 3 retries) rather than the
+ * old 120s/2 — the CLI hardened these after GA load testing. Both are
+ * overridable via env for operators who want a different budget in CI.
+ */
+function envInt(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (!raw) return fallback;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback;
+}
+const REQUEST_TIMEOUT_MS = envInt("COMPLIANCE_REQUEST_TIMEOUT_MS", 300_000); // 5 min
+const MAX_RETRIES = envInt("COMPLIANCE_MAX_RETRIES", 3);
 const RETRY_DELAY_MS = 2_000;
 
 /**
@@ -21,12 +36,6 @@ const RETRY_DELAY_MS = 2_000;
  * timeout. Configurable via `COMPLIANCE_MAX_RETRY_AFTER_MS` for operators
  * who want a different ceiling in their CI.
  */
-function envInt(name: string, fallback: number): number {
-  const raw = process.env[name];
-  if (!raw) return fallback;
-  const parsed = Number(raw);
-  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback;
-}
 const MAX_RETRY_AFTER_MS = envInt("COMPLIANCE_MAX_RETRY_AFTER_MS", 60_000);
 
 /**
@@ -60,7 +69,10 @@ export class ComplianceApiClient {
       severityThreshold?: string;
       failOn?: string[];
       excludeAcceptedRisk?: boolean;
-      actor?: string;
+      excludeResolved?: boolean;
+      productId?: string;
+      syncConfigId?: string;
+      reconcile?: boolean;
     },
   ): Promise<ValidateResponse> {
     const batches = createBatches(files);
@@ -121,7 +133,10 @@ export class ComplianceApiClient {
       severityThreshold?: string;
       failOn?: string[];
       excludeAcceptedRisk?: boolean;
-      actor?: string;
+      excludeResolved?: boolean;
+      productId?: string;
+      syncConfigId?: string;
+      reconcile?: boolean;
     },
   ): Promise<ValidateResponse> {
     const session = await this.postRaw<{ scanId: string }>(
@@ -142,11 +157,64 @@ export class ComplianceApiClient {
     }
 
     core.info(`Finalizing scan ${session.scanId}...`);
-    const finalResult = await this.postRaw<ValidateResponse>(
+    const finalResult = await this.postRaw<{
+      scanId: string;
+      passed: boolean;
+      findingsCount: number;
+      findings?: ScanFinding[];
+      summary?: Partial<ValidateSummary>;
+      prompt?: string;
+    }>(
       `/v1/compliance/scans/${encodeURIComponent(session.scanId)}/complete`,
       {},
     );
-    return normalizeFindings({ ...finalResult, scanId: session.scanId });
+
+    // The `/complete` response carries the verdict + counts but NOT the full
+    // findings array (or a complete summary). Backfill them from the scan
+    // detail endpoint — mirrors the ProdCycle CLI, and avoids crashing on an
+    // absent `findings` field. The race where the detail isn't materialized
+    // yet is rare; we degrade to an empty findings list if it's missing.
+    let findings = finalResult.findings ?? [];
+    let summary = finalResult.summary;
+    if (findings.length === 0 && finalResult.findingsCount > 0) {
+      const detail = await this.fetchScanDetail(session.scanId);
+      if (detail) {
+        findings = detail.findings ?? findings;
+        summary = (detail.summary as Partial<ValidateSummary>) ?? summary;
+      }
+    }
+
+    return normalizeFindings({
+      passed: finalResult.passed,
+      findingsCount: finalResult.findingsCount,
+      findings,
+      summary: completeSummary(summary, findings),
+      scanId: session.scanId,
+      prompt: finalResult.prompt,
+    });
+  }
+
+  /**
+   * GET /v1/compliance/scans/:id — used to backfill the findings array after a
+   * chunked session, since `/complete` only returns the verdict + counts.
+   * Returns `null` (non-fatal) if the detail can't be fetched.
+   */
+  private async fetchScanDetail(
+    scanId: string,
+  ): Promise<{ findings?: ScanFinding[]; summary?: unknown } | null> {
+    try {
+      return await this.requestRaw<{ findings?: ScanFinding[]; summary?: unknown }>(
+        "GET",
+        `/v1/compliance/scans/${encodeURIComponent(scanId)}`,
+      );
+    } catch (err) {
+      core.warning(
+        `Could not fetch scan detail to backfill findings: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+      return null;
+    }
   }
 
   private buildOpenSessionBody(options?: {
@@ -154,14 +222,20 @@ export class ComplianceApiClient {
     severityThreshold?: string;
     failOn?: string[];
     excludeAcceptedRisk?: boolean;
-    actor?: string;
+    excludeResolved?: boolean;
+    productId?: string;
+    syncConfigId?: string;
+    reconcile?: boolean;
   }): Record<string, unknown> {
     const body: Record<string, unknown> = {};
     if (options?.frameworks && options.frameworks.length > 0) {
       body.frameworks = options.frameworks;
     }
-    if (options?.actor) {
-      body.actor = options.actor;
+    if (options?.productId) {
+      body.product_id = options.productId;
+    }
+    if (options?.syncConfigId) {
+      body.sync_config_id = options.syncConfigId;
     }
     // Always send `options` with `include_prompt: true` so the chunked
     // path produces the same response shape (with remediation prompt) as
@@ -179,6 +253,16 @@ export class ComplianceApiClient {
     if (options?.excludeAcceptedRisk !== undefined) {
       optionsBody.exclude_accepted_risk = options.excludeAcceptedRisk;
     }
+    if (options?.excludeResolved !== undefined) {
+      optionsBody.exclude_resolved = options.excludeResolved;
+    }
+    // `reconcile: false` tells the server to treat this chunked session as a
+    // partial scan — filter by product suppressions but don't tie the row to
+    // the product or reconcile against it. The action sends this on diff PR
+    // scans so unchanged-file findings aren't wrongly marked resolved.
+    if (options?.reconcile !== undefined) {
+      optionsBody.reconcile = options.reconcile;
+    }
     body.options = optionsBody;
     return body;
   }
@@ -188,9 +272,22 @@ export class ComplianceApiClient {
    * retry + Retry-After logic in sendBatch but takes a free-form body
    * and returns the unwrapped envelope's `data`.
    */
-  private async postRaw<T>(
+  private postRaw<T>(
     endpoint: string,
     body: Record<string, unknown>,
+  ): Promise<T> {
+    return this.requestRaw<T>("POST", endpoint, body);
+  }
+
+  /**
+   * Generic request helper used by the chunked-session paths (POST) and the
+   * scan-detail backfill (GET). Mirrors the retry + Retry-After logic in
+   * sendBatch and returns the unwrapped envelope's `data`.
+   */
+  private async requestRaw<T>(
+    method: "GET" | "POST",
+    endpoint: string,
+    body?: Record<string, unknown>,
   ): Promise<T> {
     const url = `${this.apiUrl.replace(/\/+$/, "")}${endpoint}`;
     let lastError: Error | undefined;
@@ -207,15 +304,17 @@ export class ComplianceApiClient {
         nextDelayMs = 0;
       }
       try {
+        const headers: Record<string, string> = {
+          Authorization: `Bearer ${this.apiKey}`,
+          "x-api-version": "v1",
+          "User-Agent": "prodcycle/actions/compliance",
+        };
+        if (body !== undefined) headers["Content-Type"] = "application/json";
+
         const response = await fetch(url, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${this.apiKey}`,
-            "x-api-version": "v1",
-            "User-Agent": "prodcycle/actions/compliance",
-          },
-          body: JSON.stringify(body),
+          method,
+          headers,
+          ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
           signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
         });
 
@@ -285,7 +384,10 @@ export class ComplianceApiClient {
       severityThreshold?: string;
       failOn?: string[];
       excludeAcceptedRisk?: boolean;
-      actor?: string;
+      excludeResolved?: boolean;
+      productId?: string;
+      syncConfigId?: string;
+      reconcile?: boolean;
     },
   ): Promise<ValidateResponse> {
     // Use a queue so batches can be split further on 413
@@ -331,45 +433,46 @@ export class ComplianceApiClient {
       severityThreshold?: string;
       failOn?: string[];
       excludeAcceptedRisk?: boolean;
-      actor?: string;
+      excludeResolved?: boolean;
+      productId?: string;
+      syncConfigId?: string;
+      reconcile?: boolean;
     },
   ): Promise<ValidateResponse> {
     const filesMap: Record<string, string> = {};
-    const diffsMap: Record<string, string> = {};
-    let hasDiffs = false;
-
     for (const f of files) {
       filesMap[f.path] = f.content;
-      if (f.diff) {
-        diffsMap[f.path] = f.diff;
-        hasDiffs = true;
-      }
     }
 
     const body: ValidateRequest = {
       files: filesMap,
     };
 
-    // When diffs are available (diff scan mode), include them so the API
-    // can scope its analysis to only the changed lines.
-    if (hasDiffs) {
-      body.diffs = diffsMap;
-    }
-
     if (options?.frameworks && options.frameworks.length > 0) {
       body.frameworks = options.frameworks;
     }
 
-    if (options?.actor) {
-      body.actor = options.actor;
+    if (options?.productId) {
+      body.product_id = options.productId;
+    }
+    if (options?.syncConfigId) {
+      body.sync_config_id = options.syncConfigId;
     }
 
-    if (options?.severityThreshold || options?.failOn || options?.excludeAcceptedRisk !== undefined) {
+    if (
+      options?.severityThreshold ||
+      options?.failOn ||
+      options?.excludeAcceptedRisk !== undefined ||
+      options?.excludeResolved !== undefined ||
+      options?.reconcile !== undefined
+    ) {
       body.options = {
         severity_threshold: options.severityThreshold,
         fail_on: options.failOn,
         include_prompt: true,
         exclude_accepted_risk: options.excludeAcceptedRisk,
+        exclude_resolved: options.excludeResolved,
+        reconcile: options.reconcile,
       };
     }
 
@@ -406,9 +509,9 @@ export class ComplianceApiClient {
           const text = await response.text().catch(() => "");
           const error = tryParseError(text);
 
-          // Surface 413 as a specific error so validate() can re-split
-          // OR switch to the chunked-session endpoint when the server's
-          // 413 details point at /v1/compliance/scans (Phase 1d).
+          // Surface 413 as a specific error so validate() can re-split OR
+          // switch to the chunked-session endpoint when the server's 413
+          // response points there via `suggestedEndpoint`.
           if (response.status === 413) {
             const parsedBody = tryParseJson(text);
             throw new PayloadTooLargeError(
@@ -417,11 +520,9 @@ export class ComplianceApiClient {
             );
           }
 
-          // Honor Retry-After on 429/503 — the API uses these for the
-          // per-workspace rate limit (#1087) and the tier circuit
-          // breaker (#1091). The server-specified interval REPLACES the
-          // linear backoff for the next attempt; missing header falls
-          // back to linear.
+          // Honor Retry-After on 429 (rate limit) and 503 (temporarily
+          // unavailable). The server-specified interval REPLACES the linear
+          // backoff for the next attempt; a missing header falls back to linear.
           if (response.status === 429 || response.status === 503) {
             const retryAfter = parseRetryAfter(response.headers.get("retry-after"));
             if (retryAfter !== null) {
@@ -520,18 +621,14 @@ export function createBatches(files: ChangedFile[]): ChangedFile[][] {
 
 /** Estimate the JSON-serialized size of a file entry in bytes. */
 function estimateFileBytes(file: ChangedFile): number {
-  // Buffer.byteLength is accurate for UTF-8; add overhead for JSON key/value quoting
-  let size =
+  // Only `path` + `content` are sent in the request payload; the per-file diff
+  // is kept locally for client-side diff filtering and is not transmitted.
+  // Buffer.byteLength is accurate for UTF-8; add overhead for JSON key/value quoting.
+  return (
     Buffer.byteLength(file.path, "utf8") +
     Buffer.byteLength(file.content, "utf8") +
-    PER_FILE_OVERHEAD_BYTES;
-
-  // If diffs are present, they are also serialized in the payload
-  if (file.diff) {
-    size += Buffer.byteLength(file.diff, "utf8") + PER_FILE_OVERHEAD_BYTES;
-  }
-
-  return size;
+    PER_FILE_OVERHEAD_BYTES
+  );
 }
 
 /**
@@ -590,10 +687,9 @@ function mergeResults(results: ValidateResponse[]): ValidateResponse {
  * The parsed body is preserved so `validate()` can read
  * `error.details.suggestedEndpoint` and decide whether the right next
  * step is to keep splitting batches OR to switch to the chunked-session
- * endpoint (Phase 1d). When the server says
- * `suggestedEndpoint = '/v1/compliance/scans'`, that's a strong hint
- * that the batch is large enough that further splitting will just hit
- * the same 413 again — chunked sessions are the right answer.
+ * endpoint. When the server points at the chunked-session endpoint, that's a
+ * strong hint that the batch is large enough that further splitting will just
+ * hit the same 413 again — chunked sessions are the right answer.
  */
 export class PayloadTooLargeError extends Error {
   constructor(
@@ -631,6 +727,37 @@ export class PayloadTooLargeError extends Error {
  * - Maps `line` → `startLine` (API uses `line`, action uses `startLine`)
  * - Maps `controlId` → `ruleId` when `ruleId` is absent (API doesn't return `ruleId`)
  */
+/**
+ * Build a complete `ValidateSummary` from a possibly-partial one returned by
+ * the chunked `/complete` endpoint (which may only carry `total` + `bySeverity`).
+ * Missing counts and the framework breakdown are recomputed from the findings
+ * so downstream rendering has a consistent shape.
+ */
+function completeSummary(
+  partial: Partial<ValidateSummary> | undefined,
+  findings: ScanFinding[],
+): ValidateSummary {
+  const bySeverity: Record<string, number> = { ...(partial?.bySeverity ?? {}) };
+  const byFramework: Record<string, number> = { ...(partial?.byFramework ?? {}) };
+
+  if (Object.keys(bySeverity).length === 0) {
+    for (const f of findings) {
+      bySeverity[f.severity] = (bySeverity[f.severity] || 0) + 1;
+    }
+  }
+  if (Object.keys(byFramework).length === 0) {
+    for (const f of findings) {
+      byFramework[f.framework] = (byFramework[f.framework] || 0) + 1;
+    }
+  }
+
+  const total = partial?.total ?? findings.length;
+  const failed = partial?.failed ?? findings.filter((f) => !f.advisory).length;
+  const passed = partial?.passed ?? Math.max(0, total - failed);
+
+  return { total, passed, failed, bySeverity, byFramework };
+}
+
 function normalizeFindings(response: ValidateResponse): ValidateResponse {
   response.findings = response.findings.map((f) => ({
     ...f,
@@ -701,8 +828,8 @@ function tryParseJson(text: string): {
  *   - HTTP-date: an absolute date (e.g. "Wed, 21 Oct 2026 07:28:00 GMT")
  * Returns the wait in seconds, or null if the header is missing/unparseable.
  *
- * Helper for honoring the rate-limit (429) and circuit-breaker (503)
- * server signals — see Phase 1c (#1087) and Phase 1e (#1091).
+ * Helper for honoring the rate-limit (429) and service-unavailable (503)
+ * server signals.
  */
 function parseRetryAfter(value: string | null): number | null {
   if (!value) return null;

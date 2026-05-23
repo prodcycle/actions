@@ -50,13 +50,29 @@ inputs:
     required: false
     default: "auto"
   exclude-accepted-risk:
-    description: "Skip findings that have been marked as accepted risk in the ProdCycle platform."
+    description: "Skip findings that have been marked as accepted risk in the ProdCycle platform. Requires product-id or sync-config-id to be set."
     required: false
     default: "true"
+  exclude-resolved:
+    description: "Also skip findings marked as resolved in the ProdCycle platform (opt-in). Requires product-id or sync-config-id."
+    required: false
+    default: "false"
+  product-id:
+    description: "ProdCycle product UUID this repo maps to. Enables accepted-risk/resolved suppression for the product. Either this or sync-config-id."
+    required: false
+    default: ""
+  sync-config-id:
+    description: "ProdCycle sync configuration UUID linking this repo to a product. Alternative to product-id for identifying the product."
+    required: false
+    default: ""
   github-token:
     description: "GitHub token for PR comments and annotations. Defaults to the automatic GITHUB_TOKEN."
     required: false
     default: ${{ github.token }}
+  comment-identity:
+    description: "Who authors PR comments. 'auto' posts as prodcycle[bot] when the ProdCycle GitHub App is installed (falling back to github-actions[bot]), 'app' requires the App identity, 'github-token' always uses github-actions[bot]. Requires pull-requests: write permission to resolve threads."
+    required: false
+    default: "auto"
 
 outputs:
   passed:

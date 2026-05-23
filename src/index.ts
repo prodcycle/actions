@@ -18,8 +18,10 @@ import {
   createAnnotations,
   postReviewComments,
   postSummaryComment,
+  resolveFixedReviewThreads,
   writeJobSummary,
 } from "./annotate";
+import { resolveGitHubAuth } from "./github";
 import type { ActionInputs } from "./types";
 
 function parseInputs(): ActionInputs {
@@ -39,6 +41,13 @@ function parseInputs(): ActionInputs {
   const rawReviewEvent = core.getInput("review-event").trim().toLowerCase();
   const reviewEvent = resolveReviewEvent(rawReviewEvent, annotate);
 
+  const rawIdentity = (core.getInput("comment-identity") || "auto").trim().toLowerCase();
+  if (!["auto", "app", "github-token"].includes(rawIdentity)) {
+    throw new Error(
+      `Invalid comment-identity "${rawIdentity}". Must be one of: auto, app, github-token.`,
+    );
+  }
+
   return {
     apiKey,
     apiUrl: core.getInput("api-url") || "https://api.prodcycle.com",
@@ -52,6 +61,10 @@ function parseInputs(): ActionInputs {
     comment: core.getBooleanInput("comment"),
     reviewEvent,
     excludeAcceptedRisk: core.getBooleanInput("exclude-accepted-risk"),
+    commentIdentity: rawIdentity as ActionInputs["commentIdentity"],
+    productId: core.getInput("product-id").trim() || undefined,
+    syncConfigId: core.getInput("sync-config-id").trim() || undefined,
+    excludeResolved: core.getBooleanInput("exclude-resolved"),
   };
 }
 
@@ -121,11 +134,16 @@ async function run(): Promise<void> {
 
   const repoRoot = process.env.GITHUB_WORKSPACE || process.cwd();
   let files;
+  // Whether this scan covers the entire repo. Drives `reconcile`: only a full
+  // scan may reconcile against the product (mark absent findings resolved); a
+  // partial diff scan must not, or it would resolve findings in unchanged files.
+  let isFullScan = false;
 
   if (inputs.scanMode === "full") {
     // Full codebase scan — scan every file in the repo
     core.info("Running full codebase scan...");
     files = await collectAllFiles(repoRoot, inputs.include, inputs.exclude);
+    isFullScan = true;
   } else if (inputs.scanMode === "auto") {
     // Auto mode — diff scan for PRs, full scan for pushes
     if (context.payload.pull_request) {
@@ -134,12 +152,14 @@ async function run(): Promise<void> {
     } else {
       core.info("Auto mode: No PR detected, running full codebase scan...");
       files = await collectAllFiles(repoRoot, inputs.include, inputs.exclude);
+      isFullScan = true;
     }
   } else {
     // Diff mode (explicitly requested) — only scan the diffs from the PR
     if (!context.payload.pull_request) {
       core.info("Not a pull request event. Falling back to full codebase scan.");
       files = await collectAllFiles(repoRoot, inputs.include, inputs.exclude);
+      isFullScan = true;
     } else {
       files = await runDiffScan(context, repoRoot, inputs);
     }
@@ -171,7 +191,12 @@ async function run(): Promise<void> {
     severityThreshold: inputs.severityThreshold,
     failOn: inputs.failOn.length > 0 ? inputs.failOn : undefined,
     excludeAcceptedRisk: inputs.excludeAcceptedRisk,
-    actor: prAuthor,
+    excludeResolved: inputs.excludeResolved,
+    productId: inputs.productId,
+    syncConfigId: inputs.syncConfigId,
+    // Only a full-repo scan may reconcile against the product. Diff scans use
+    // the product solely to read accepted-risk/resolved suppressions.
+    reconcile: isFullScan,
   });
 
   // In diff mode, filter out findings on lines outside the PR diff.
@@ -198,19 +223,30 @@ async function run(): Promise<void> {
     createAnnotations(result.findings);
   }
 
-  // ── 6. Post PR review with inline comments ──
+  // ── 6. Resolve who posts the comments (prodcycle[bot] vs github-actions[bot]) ──
+  //
+  // Resolved once and reused for review comments, the summary comment, and
+  // thread resolution — only when there's PR work that needs a token.
+  const isPullRequest = Boolean(context.payload.pull_request);
+  // Concrete review intent: null when reviews are disabled or this isn't a PR.
+  // Narrowing through this const (rather than a boolean) lets TS know the value
+  // is not "none" inside the guarded block below.
+  const reviewEvent =
+    isPullRequest && inputs.reviewEvent !== "none" ? inputs.reviewEvent : null;
+  const auth =
+    isPullRequest && (reviewEvent !== null || inputs.comment)
+      ? await resolveGitHubAuth(inputs.apiUrl, inputs.apiKey, inputs.commentIdentity)
+      : null;
+  const postOptions = auth
+    ? { octokit: auth.octokit, identity: auth.identity, scanId: result.scanId }
+    : { scanId: result.scanId };
 
-  if (
-    inputs.reviewEvent !== "none" &&
-    context.payload.pull_request &&
-    result.findings.length > 0
-  ) {
+  // ── 7. Post PR review with inline comments ──
+
+  if (reviewEvent !== null && result.findings.length > 0) {
     try {
-      const resolvedEvent = resolveReviewEventForPass(
-        inputs.reviewEvent,
-        result.passed,
-      );
-      await postReviewComments(result.findings, resolvedEvent);
+      const resolvedEvent = resolveReviewEventForPass(reviewEvent, result.passed);
+      await postReviewComments(result.findings, resolvedEvent, postOptions);
     } catch (err) {
       core.warning(
         `Failed to post PR review comments: ${err instanceof Error ? err.message : String(err)}`,
@@ -218,16 +254,30 @@ async function run(): Promise<void> {
     }
   }
 
-  // ── 7. Post PR summary comment ──
+  // ── 7b. Resolve threads whose findings have been fixed ──
+  //
+  // Runs whenever reviews are enabled — including when there are zero findings
+  // left (the all-fixed case), which is exactly when stale threads should close.
+  if (reviewEvent !== null) {
+    try {
+      await resolveFixedReviewThreads(result.findings, postOptions);
+    } catch (err) {
+      core.warning(
+        `Failed to resolve fixed review threads: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
 
-  if (inputs.comment && context.payload.pull_request) {
+  // ── 8. Post PR summary comment ──
+
+  if (inputs.comment && isPullRequest) {
     try {
       await postSummaryComment(
         result.findings,
         result.summary,
         result.scanId,
         result.passed,
-        inputs.apiUrl,
+        postOptions,
       );
     } catch (err) {
       core.warning(
@@ -236,11 +286,11 @@ async function run(): Promise<void> {
     }
   }
 
-  // ── 8. Write job summary ──
+  // ── 9. Write job summary ──
 
   writeJobSummary(result.summary, result.scanId, result.passed, files.length);
 
-  // ── 9. Fail the action if scan did not pass ──
+  // ── 10. Fail the action if scan did not pass ──
 
   if (!result.passed) {
     core.setFailed(

@@ -64,7 +64,7 @@ describe("ComplianceApiClient", () => {
     expect(body.frameworks).toEqual(["soc2"]);
   });
 
-  it("includes actor in request body when provided", async () => {
+  it("never transmits diffs or actor in the request body", async () => {
     const mockResponse = {
       status: "success",
       statusCode: 200,
@@ -79,7 +79,7 @@ describe("ComplianceApiClient", () => {
           bySeverity: {},
           byFramework: {},
         },
-        scanId: "scan-actor",
+        scanId: "scan-no-extra",
       },
     };
 
@@ -89,47 +89,16 @@ describe("ComplianceApiClient", () => {
     } as Response);
 
     const client = new ComplianceApiClient(mockApiUrl, mockApiKey);
-    await client.validate(
-      [{ path: "main.tf", content: "" }],
-      { actor: "octocat" },
-    );
+    // The file carries a local diff (used for client-side diff filtering) — it
+    // must NOT be transmitted; the backend scans full content. `actor` was also
+    // dropped (the API doesn't consume it).
+    await client.validate([{ path: "main.tf", content: "x", diff: "@@ -1 +1 @@" }]);
 
     const body = JSON.parse(
       (fetchSpy.mock.calls[0][1] as RequestInit).body as string,
     );
-    expect(body.actor).toBe("octocat");
-  });
-
-  it("omits actor from request body when not provided", async () => {
-    const mockResponse = {
-      status: "success",
-      statusCode: 200,
-      data: {
-        passed: true,
-        findingsCount: 0,
-        findings: [],
-        summary: {
-          total: 0,
-          passed: 0,
-          failed: 0,
-          bySeverity: {},
-          byFramework: {},
-        },
-        scanId: "scan-no-actor",
-      },
-    };
-
-    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce({
-      ok: true,
-      json: async () => mockResponse,
-    } as Response);
-
-    const client = new ComplianceApiClient(mockApiUrl, mockApiKey);
-    await client.validate([{ path: "main.tf", content: "" }]);
-
-    const body = JSON.parse(
-      (fetchSpy.mock.calls[0][1] as RequestInit).body as string,
-    );
+    expect(body.files).toEqual({ "main.tf": "x" });
+    expect(body.diffs).toBeUndefined();
     expect(body.actor).toBeUndefined();
   });
 
@@ -237,6 +206,73 @@ describe("ComplianceApiClient", () => {
     );
     expect(body.options).toBeDefined();
     expect(body.options.exclude_accepted_risk).toBe(false);
+  });
+
+  it("forwards product/sync identifiers and resolved/reconcile options", async () => {
+    const mockResponse = {
+      status: "success",
+      statusCode: 200,
+      data: {
+        passed: true,
+        findingsCount: 0,
+        findings: [],
+        summary: { total: 0, passed: 0, failed: 0, bySeverity: {}, byFramework: {} },
+        scanId: "scan-suppress",
+      },
+    };
+
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce({
+      ok: true,
+      json: async () => mockResponse,
+    } as Response);
+
+    const client = new ComplianceApiClient(mockApiUrl, mockApiKey);
+    await client.validate(
+      [{ path: "main.tf", content: "" }],
+      {
+        productId: "prod-uuid",
+        syncConfigId: "sync-uuid",
+        excludeAcceptedRisk: true,
+        excludeResolved: true,
+        reconcile: false,
+      },
+    );
+
+    const body = JSON.parse(
+      (fetchSpy.mock.calls[0][1] as RequestInit).body as string,
+    );
+    expect(body.product_id).toBe("prod-uuid");
+    expect(body.sync_config_id).toBe("sync-uuid");
+    expect(body.options.exclude_resolved).toBe(true);
+    expect(body.options.reconcile).toBe(false);
+  });
+
+  it("omits product identifiers when not provided (back-compat)", async () => {
+    const mockResponse = {
+      status: "success",
+      statusCode: 200,
+      data: {
+        passed: true,
+        findingsCount: 0,
+        findings: [],
+        summary: { total: 0, passed: 0, failed: 0, bySeverity: {}, byFramework: {} },
+        scanId: "scan-noprod",
+      },
+    };
+
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce({
+      ok: true,
+      json: async () => mockResponse,
+    } as Response);
+
+    const client = new ComplianceApiClient(mockApiUrl, mockApiKey);
+    await client.validate([{ path: "main.tf", content: "" }], { excludeAcceptedRisk: true });
+
+    const body = JSON.parse(
+      (fetchSpy.mock.calls[0][1] as RequestInit).body as string,
+    );
+    expect(body.product_id).toBeUndefined();
+    expect(body.sync_config_id).toBeUndefined();
   });
 
   it("throws on 4xx client errors without retrying", async () => {
@@ -689,7 +725,13 @@ describe("ComplianceApiClient", () => {
     const client = new ComplianceApiClient(mockApiUrl, mockApiKey);
     const result = await client.validate(
       [{ path: "main.tf", content: "x" }],
-      { frameworks: ["soc2"], actor: "octocat" },
+      {
+        frameworks: ["soc2"],
+        productId: "prod-uuid",
+        syncConfigId: "sync-uuid",
+        excludeResolved: true,
+        reconcile: false,
+      },
     );
 
     expect(fetchSpy).toHaveBeenCalledTimes(4);
@@ -705,12 +747,18 @@ describe("ComplianceApiClient", () => {
     expect(result.passed).toBe(true);
     expect(result.scanId).toBe("scan-chunked-99");
 
-    // Open-session body forwards frameworks + actor
+    // Open-session body forwards frameworks AND the product-aware options
+    // (productId/syncConfigId at the top level; excludeResolved + reconcile
+    // inside options). With reconcile=false, the backend detaches the row +
+    // skips reconciliation while still applying suppression filtering.
     const openBody = JSON.parse(
       (fetchSpy.mock.calls[1][1] as RequestInit).body as string,
     );
     expect(openBody.frameworks).toEqual(["soc2"]);
-    expect(openBody.actor).toBe("octocat");
+    expect(openBody.product_id).toBe("prod-uuid");
+    expect(openBody.sync_config_id).toBe("sync-uuid");
+    expect(openBody.options.exclude_resolved).toBe(true);
+    expect(openBody.options.reconcile).toBe(false);
 
     // Chunk body has the file in path→content map shape
     const chunkBody = JSON.parse(

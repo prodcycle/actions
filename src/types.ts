@@ -20,6 +20,27 @@ export interface ActionInputs {
    */
   reviewEvent: "auto" | "comment" | "request-changes" | "none";
   excludeAcceptedRisk: boolean;
+  /**
+   * Who PR comments are authored by.
+   * - `auto`: post as prodcycle[bot] when the ProdCycle App token is
+   *   available, otherwise github-actions[bot].
+   * - `app`: require the ProdCycle App identity (warn + fall back if missing).
+   * - `github-token`: always github-actions[bot].
+   */
+  commentIdentity: "auto" | "app" | "github-token";
+  /**
+   * ProdCycle product the repo maps to. When set, the scan respects findings
+   * accepted-as-risk (and, with excludeResolved, resolved) for that product.
+   * Either productId or syncConfigId identifies the product server-side.
+   */
+  productId?: string;
+  syncConfigId?: string;
+  /**
+   * Also suppress findings marked RESOLVED in ProdCycle (opt-in). Requires a
+   * product to be identified (productId/syncConfigId). Accepted-risk is always
+   * respected; this extends suppression to manually-resolved findings.
+   */
+  excludeResolved: boolean;
 }
 
 /** A single changed file with its content */
@@ -34,16 +55,22 @@ export interface ChangedFile {
 
 export interface ValidateRequest {
   files: Record<string, string>;
-  /** When present, the API receives diffs instead of full file contents */
-  diffs?: Record<string, string>;
   frameworks?: string[];
-  /** GitHub username of the user who opened the PR */
-  actor?: string;
+  /** ProdCycle product association (drives accepted-risk/resolved filtering) */
+  product_id?: string;
+  sync_config_id?: string;
   options?: {
     severity_threshold?: string;
     fail_on?: string[];
     include_prompt?: boolean;
     exclude_accepted_risk?: boolean;
+    exclude_resolved?: boolean;
+    /**
+     * Whether the server should reconcile this scan against the product's prior
+     * scan. The action sends `false` for partial (diff) scans so unchanged-file
+     * findings aren't wrongly marked resolved; `true` for full-repo scans.
+     */
+    reconcile?: boolean;
   };
 }
 
@@ -73,6 +100,12 @@ export interface ScanFinding {
   line?: number | null;
   message: string;
   remediation: string;
+  /**
+   * When true, the finding is informational and does NOT block the scan
+   * (the API excludes it from `summary.failed` and the pass/fail verdict).
+   * Surfaced as a notice, never as a blocking error / request-changes.
+   */
+  advisory?: boolean;
 }
 
 export interface ValidateSummary {
