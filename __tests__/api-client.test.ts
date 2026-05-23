@@ -741,11 +741,17 @@ describe("ComplianceApiClient", () => {
     expect(result.passed).toBe(true);
     expect(result.scanId).toBe("scan-chunked-99");
 
-    // Open-session body forwards frameworks
+    // Open-session body forwards frameworks but NOT the product-aware options
+    // (those would tie a partial scan to the product and trigger destructive
+    // reconcile on the backend until that path is supported).
     const openBody = JSON.parse(
       (fetchSpy.mock.calls[1][1] as RequestInit).body as string,
     );
     expect(openBody.frameworks).toEqual(["soc2"]);
+    expect(openBody.product_id).toBeUndefined();
+    expect(openBody.sync_config_id).toBeUndefined();
+    expect(openBody.options?.exclude_resolved).toBeUndefined();
+    expect(openBody.options?.reconcile).toBeUndefined();
 
     // Chunk body has the file in path→content map shape
     const chunkBody = JSON.parse(

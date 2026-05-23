@@ -30774,7 +30774,32 @@ class ComplianceApiClient {
      * need to special-case which path was taken.
      */
     async postChunkedSession(files, options) {
-        const session = await this.postRaw("/v1/compliance/scans", this.buildOpenSessionBody(options));
+        // Explicit narrowing: the chunked-session open does NOT forward
+        // productId / syncConfigId / excludeResolved / reconcile. Doing so today
+        // would let the backend tie a partial scan to the product and then
+        // reconcile against it on /complete, wrongly resolving every finding in
+        // unchanged files. Until the backend honors `reconcile` on
+        // startScanSession + completeScanSession, suppression on this fallback
+        // path is a no-op. Surface that once so users know what to expect.
+        if (options?.productId ||
+            options?.syncConfigId ||
+            options?.excludeResolved ||
+            options?.reconcile === false) {
+            core.info("Note: this large payload triggered the chunked-session fallback. " +
+                "Accepted-risk and resolved-finding suppression do not yet apply on " +
+                "the chunked path; results may include findings you've already " +
+                "marked Accepted Risk or Resolved in ProdCycle. Reduce the PR size " +
+                "or wait for the chunked-path follow-up to land.");
+        }
+        const openBody = this.buildOpenSessionBody({
+            ...(options?.frameworks && { frameworks: options.frameworks }),
+            ...(options?.severityThreshold && { severityThreshold: options.severityThreshold }),
+            ...(options?.failOn && { failOn: options.failOn }),
+            ...(options?.excludeAcceptedRisk !== undefined && {
+                excludeAcceptedRisk: options.excludeAcceptedRisk,
+            }),
+        });
+        const session = await this.postRaw("/v1/compliance/scans", openBody);
         core.info(`Opened chunked compliance scan session: ${session.scanId}`);
         const batches = createBatches(files);
         for (let i = 0; i < batches.length; i++) {
