@@ -42,9 +42,9 @@ inputs:
     required: false
     default: "true"
   review-event:
-    description: "PR review event when findings are posted. One of: 'auto' (COMMENT on pass, REQUEST_CHANGES on fail — historical behavior), 'comment' (always COMMENT, never blocks merge), 'request-changes' (always REQUEST_CHANGES), or 'none' (skip the PR review entirely). Empty string resolves to 'auto' when annotate=true, 'none' when annotate=false (back-compat)."
+    description: "PR review event when findings are posted. One of: 'comment' (default — always COMMENT, never blocks merge; the action still fails the CI step on blocking findings so branch protection can enforce), 'request-changes' (always REQUEST_CHANGES — adds a red 'Changes requested' review that blocks the merge button directly), 'auto' (COMMENT on pass, REQUEST_CHANGES on fail — pre-v2.4 default), or 'none' (skip the PR review entirely)."
     required: false
-    default: ""
+    default: "comment"
   scan-mode:
     description: "Scan mode: 'auto' (diff for PRs, full for pushes), 'diff' (only changed lines), 'full' (entire codebase)."
     required: false

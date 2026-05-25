@@ -81,7 +81,7 @@ When run on a `push` event (e.g., merge to `main`):
 | `scan-mode`          | No       | `auto`                      | `auto` (diff for PRs, full for pushes); `diff` (changed lines only); `full` (entire codebase) |
 | `annotate`           | No       | `true`                      | Create inline workflow annotations (`core.error`/`warning`/`notice`) for findings |
 | `comment`            | No       | `true`                      | Post a summary comment on the PR                                         |
-| `review-event`       | No       | *(empty — see below)*        | PR review event: `auto` / `comment` / `request-changes` / `none`          |
+| `review-event`       | No       | `comment`                   | PR review event: `comment` (advisory, never blocks merge — the CI step still fails on blocking findings) / `request-changes` (blocks merge via the review) / `auto` (pre-v2.4 behavior: COMMENT on pass, REQUEST_CHANGES on fail) / `none` |
 | `exclude-accepted-risk` | No   | `true`                      | Skip findings marked accepted-risk in ProdCycle. Requires `product-id` or `sync-config-id`. |
 | `exclude-resolved`   | No       | `false`                     | Also skip findings marked resolved in ProdCycle (opt-in). Requires `product-id` or `sync-config-id`. |
 | `product-id`         | No       |                             | ProdCycle product UUID this repo maps to. Enables accepted-risk / resolved suppression. |
@@ -173,15 +173,18 @@ When you mark a finding **Accept Risk** (or **Resolved**) in the ProdCycle dashb
     echo "Scan: ${{ steps.compliance.outputs.scan-id }}"
 ```
 
-#### Non-blocking compliance (comments only, never "Changes requested")
+#### Block the merge button via a "Changes requested" review
+
+By default (`review-event: comment`) the action posts an advisory review and fails the CI step — branch protection enforces the block via the failed check. If you'd rather have the action itself post a "Changes requested" review (which blocks the merge button regardless of branch-protection config), opt in:
 
 ```yaml
 - uses: prodcycle/actions/compliance@v2
   with:
     api-key: ${{ secrets.PRODCYCLE_API_KEY }}
-    review-event: comment
-  continue-on-error: true
+    review-event: request-changes
 ```
+
+Or use `auto` for the pre-v2.4 behavior (COMMENT on pass, REQUEST_CHANGES on fail).
 
 #### Explicit full codebase scan
 
