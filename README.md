@@ -128,6 +128,8 @@ When you mark a finding **Accept Risk** (or **Resolved**) in the ProdCycle dashb
 - Matching is by a line-stable fingerprint, so an accepted/resolved finding stays suppressed even after surrounding code moves.
 - On pull-request (diff) scans the action never alters your product's stored findings — it only *reads* your accept/resolve decisions to filter the PR results. Reconciliation (marking findings resolved when they disappear) happens only on full-repo scans.
 
+> ⚠️ **Accepted-risk vs Resolved — stickiness differs.** "Accepted-risk" status is carried forward into every new full scan, so it stays suppressed across runs. "Resolved" status is **not** carried forward: the next full scan re-detects the finding as `ACTIVE` (a new row), so `exclude-resolved` only suppresses it until the next full repo scan. Use **Accept Risk** for findings you'll never address; use **Resolve** for findings you've actually fixed.
+
 ### Examples
 
 #### Scan specific frameworks
