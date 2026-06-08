@@ -86,6 +86,7 @@ When run on a `push` event (e.g., merge to `main`):
 | `exclude-resolved`   | No       | `false`                     | Also skip findings marked resolved in ProdCycle (opt-in). Requires `product-id` or `sync-config-id`. |
 | `product-id`         | No       |                             | ProdCycle product UUID this repo maps to. Enables accepted-risk / resolved suppression. |
 | `sync-config-id`     | No       |                             | ProdCycle sync-config UUID linking this repo to a product. Alternative to `product-id`. |
+| `github-token`       | No       | `${{ github.token }}`       | Token for PR comments and annotations. Defaults to the automatic `GITHUB_TOKEN`.        |
 | `comment-identity`   | No       | `auto`                      | Who authors PR comments: `auto` (prodcycle[bot] when the App is installed, else github-actions[bot]), `app` (require the App), `github-token`. |
 
 ### Outputs

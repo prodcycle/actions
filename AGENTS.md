@@ -78,10 +78,10 @@ files (Alembic, Prisma, Django, Flyway, etc.).
 ### Error handling in the API client
 
 - **4xx errors** (except 429 and 413): thrown immediately, no retry
-- **413**: thrown as `PayloadTooLargeError`, caught by `validate()` for re-splitting
-- **429**: retried with backoff
-- **5xx errors**: retried up to `MAX_RETRIES` (2) with increasing delay
-- **Timeout**: 120 seconds per request
+- **413**: thrown as `PayloadTooLargeError`, caught by `validate()` for re-splitting (and a chunked-session upload fallback for payloads too large to split inline)
+- **429**: retried with backoff (honors `Retry-After`, capped)
+- **5xx errors**: retried up to `MAX_RETRIES` (default 3, via `COMPLIANCE_MAX_RETRIES`) with increasing delay
+- **Timeout**: 300 seconds per request (via `COMPLIANCE_REQUEST_TIMEOUT_MS`)
 
 ### Version tagging
 
