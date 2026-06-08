@@ -50,7 +50,12 @@ Managed automatically via `scan-mode: auto` (default):
 | `annotate`              | No       | `true`                      | Create inline workflow annotations (`core.error`/`warning`/`notice`) for findings            |
 | `comment`               | No       | `true`                      | Post a summary comment                                                                       |
 | `review-event`          | No       | *(empty — back-compat)*     | PR review event: `auto` / `comment` / `request-changes` / `none` — see below                 |
-| `exclude-accepted-risk` | No       | `true`                      | Skip findings marked as accepted risk in ProdCycle                                           |
+| `exclude-accepted-risk` | No       | `true`                      | Skip findings marked as accepted risk in ProdCycle (requires `product-id` or `sync-config-id`) |
+| `exclude-resolved`      | No       | `false`                     | Also skip findings marked resolved in ProdCycle (requires `product-id` or `sync-config-id`)  |
+| `product-id`            | No       | None                        | ProdCycle product UUID this repo maps to (enables accepted-risk/resolved suppression)        |
+| `sync-config-id`        | No       | None                        | ProdCycle sync-configuration UUID linking this repo to a product (alternative to `product-id`) |
+| `github-token`          | No       | `${{ github.token }}`       | Token for PR comments/annotations (defaults to the automatic `GITHUB_TOKEN`)                 |
+| `comment-identity`      | No       | `auto`                      | Who authors PR comments: `auto` / `app` / `github-token` (see below)                         |
 
 ### `review-event` values
 
