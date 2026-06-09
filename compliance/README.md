@@ -49,7 +49,7 @@ Managed automatically via `scan-mode: auto` (default):
 | `scan-mode`             | No       | `auto`                      | `auto` / `diff` (changed lines) / `full` (entire codebase)                                   |
 | `annotate`              | No       | `true`                      | Create inline workflow annotations (`core.error`/`warning`/`notice`) for findings            |
 | `comment`               | No       | `true`                      | Post a summary comment                                                                       |
-| `review-event`          | No       | *(empty — back-compat)*     | PR review event: `auto` / `comment` / `request-changes` / `none` — see below                 |
+| `review-event`          | No       | `comment`                   | PR review event: `comment` / `request-changes` / `auto` / `none` — see below                 |
 | `exclude-accepted-risk` | No       | `true`                      | Skip findings marked as accepted risk in ProdCycle (requires `product-id` or `sync-config-id`) |
 | `exclude-resolved`      | No       | `false`                     | Also skip findings marked resolved in ProdCycle (requires `product-id` or `sync-config-id`)  |
 | `product-id`            | No       | None                        | ProdCycle product UUID this repo maps to (enables accepted-risk/resolved suppression)        |
@@ -63,11 +63,11 @@ Controls the formal PR review that the action submits when findings exist. Indep
 
 | Value             | Behavior                                                                                                |
 | ----------------- | ------------------------------------------------------------------------------------------------------- |
-| `auto`            | `COMMENT` if the scan passed, `REQUEST_CHANGES` if it failed (historical behavior of `annotate: true`)  |
-| `comment`         | Always `COMMENT` — inline review comments post but never flip the PR into "Changes requested"           |
+| `comment` *(default)* | Always `COMMENT` — inline review comments post but never flip the PR into "Changes requested". The CI step still fails on blocking findings, so branch protection can enforce the gate. |
 | `request-changes` | Always `REQUEST_CHANGES` — every finding-bearing scan formally requests changes                         |
+| `auto`            | `COMMENT` if the scan passed, `REQUEST_CHANGES` if it failed (the pre-v2.4 default)                      |
 | `none`            | Skip the PR review entirely (inline workflow annotations controlled by `annotate` are unaffected)       |
-| *(empty)*         | **Back-compat default:** `auto` when `annotate: true`, `none` when `annotate: false`                    |
+| *(empty)*         | Legacy fallback, reachable only if you explicitly pass an empty string: `auto` when `annotate: true`, `none` when `annotate: false`. The action now defaults `review-event` to `comment`, so you won't hit this unless you override it. |
 
 Use `review-event: comment` (or `none`) when you want informative findings without blocking merges via the "Changes requested" review state.
 
