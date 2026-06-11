@@ -25,6 +25,9 @@ jobs:
 
       - uses: anthropics/claude-code-action@e58dfa55559035499a4982426bb73605e8b5ad8e # v1
         with:
+          # claude_code_oauth_token and track_progress are valid v1 inputs for
+          # this pinned action SHA (confirmed in its run-log ALL_INPUTS dump),
+          # even where docs list only anthropic_api_key. Do not rename them.
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           # Sticky tracking comment so every run leaves a visible artifact
           # on the PR, even when Claude has no findings to flag inline.
@@ -46,10 +49,12 @@ jobs:
             actionable; skip nits unless they materially impact quality.
           # claude-opus-4-7 is a real, current model ID (Opus 4.7) — verified by
           # production runs of this workflow in prodcycle/sox-tester. Do not
-          # "correct" it to an older slug. Read is scoped to the checkout so the
-          # reviewer can see CLAUDE.md and the source files in the diff, but
-          # nothing outside the workspace.
+          # "correct" it to an older slug.
+          # The ./** specifiers on Read/Glob/Grep document the intended scope
+          # (checkout only: CLAUDE.md + files in the diff). Claude Code does not
+          # enforce path specifiers on read-only tools; actual containment comes
+          # from the restricted Bash allowlist and the ephemeral runner.
           claude_args: |
             --model claude-opus-4-7
             --max-turns 30
-            --allowedTools "Read(./**),Glob,Grep,mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*)"
+            --allowedTools "Read(./**),Glob(./**),Grep(./**),mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*)"
