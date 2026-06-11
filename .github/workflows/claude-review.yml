@@ -26,7 +26,7 @@ jobs:
         with:
           fetch-depth: 1
 
-      - uses: anthropics/claude-code-action@e58dfa55559035499a4982426bb73605e8b5ad8e # v1
+      - uses: anthropics/claude-code-action@eee73e2ae5399c561de4ff038aa7b36a7aa991a7 # v1 (2026-06-10)
         with:
           # claude_code_oauth_token and track_progress are valid v1 inputs for
           # this pinned action SHA (confirmed in its run-log ALL_INPUTS dump),
