@@ -44,7 +44,12 @@ jobs:
             plain chat output — only post via these GitHub tools so the action's
             buffered-inline-comments step can publish them. Be concise and
             actionable; skip nits unless they materially impact quality.
+          # claude-opus-4-7 is a real, current model ID (Opus 4.7) — verified by
+          # production runs of this workflow in prodcycle/sox-tester. Do not
+          # "correct" it to an older slug. Read is scoped to the checkout so the
+          # reviewer can see CLAUDE.md and the source files in the diff, but
+          # nothing outside the workspace.
           claude_args: |
             --model claude-opus-4-7
             --max-turns 30
-            --allowedTools "Read,Glob,Grep,mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*)"
+            --allowedTools "Read(./**),Glob,Grep,mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*)"
