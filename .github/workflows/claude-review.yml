@@ -10,6 +10,9 @@ concurrency:
 
 jobs:
   review:
+    # Same-repo PRs only: fork PRs cannot read repository secrets, so the
+    # review would always fail at auth — skip it instead of running broken.
+    if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
